@@ -121,7 +121,23 @@
       </div>
 
       <div class="field">
-        <label class="field-label" for="cr-pool">Number Pool</label>
+        <label class="field-label">Game Mode</label>
+        <div class="mode-toggle">
+          <button type="button" class="mode-btn active" data-mode="digital" id="mode-digital">
+            <span class="mode-icon">📱</span>
+            <span class="mode-label">Digital</span>
+            <span class="mode-desc">On-screen tickets</span>
+          </button>
+          <button type="button" class="mode-btn" data-mode="paper" id="mode-paper">
+            <span class="mode-icon">📄</span>
+            <span class="mode-label">Paper</span>
+            <span class="mode-desc">Physical tickets</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Number Pool</label>
         <select id="cr-pool" class="select" style="width:100%">
           <option value="90">1 – 90 (Classic Tambola)</option>
           <option value="100">1 – 100</option>
@@ -189,14 +205,9 @@
       </div>
 
       <div class="lobby-invite">
-        <div class="invite-label">Share this code to invite players</div>
-        <div class="invite-code-display" id="lb-code-display">
-          <span class="invite-code-text" id="lb-code-text"></span>
-          <button class="btn btn-xs btn-outline" id="btn-copy-code" title="Copy code">📋</button>
-          <button class="btn btn-xs btn-outline" id="btn-copy-link" title="Copy invite link">🔗</button>
-        </div>
-        <div class="invite-or">— or share this link —</div>
-        <div class="invite-link-box" id="lb-link-box"></div>
+        <button id="btn-lobby-invite" class="btn btn-primary btn-lg" style="width:100%">
+          🔗 Share Invite Link
+        </button>
       </div>
 
       <div class="lobby-section">
@@ -244,6 +255,9 @@
               <span class="number-big" id="num-display">–</span>
             </div>
           </div>
+          <div class="countdown-bar" id="countdown-bar">
+            <div class="countdown-fill" id="countdown-fill"></div>
+          </div>
           <div class="prev-strip" id="prev-strip"></div>
           <div class="progress-wrap">
             <div class="progress-track">
@@ -290,36 +304,55 @@
     </div>
   </div>
 
-  <!-- ===== SCREEN: SCOREBOARD ===== -->
-  <div id="screen-scoreboard" class="screen hidden">
-    <div class="scoreboard-card">
-      <div class="form-head">
-        <button class="btn-back" id="btn-back-score">←</button>
-        <h2>🏆 Scoreboard</h2>
+  <!-- ===== SCREEN: SCOREBOARD (replaced by modal) ===== -->
+
+  <!-- ===== MODALS ===== -->
+
+  <!-- Invite Modal -->
+  <div id="modal-invite" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>🔗 Invite Players</h2>
+        <button class="modal-x" data-close="modal-invite">✕</button>
       </div>
+      <div class="invite-modal-body">
+        <div class="invite-link-display" id="invite-link-display"></div>
+        <div class="invite-code-display-modal">
+          <span class="invite-code-label">Room Code</span>
+          <span class="invite-code-value" id="invite-code-value"></span>
+        </div>
+      </div>
+      <div class="modal-foot" style="justify-content:center">
+        <button id="btn-invite-copy" class="btn btn-primary">📋 Copy Link & Code</button>
+        <button class="btn btn-ghost" data-close="modal-invite">Done</button>
+      </div>
+    </div>
+  </div>
 
+  <!-- Scoreboard Modal -->
+  <div id="modal-scoreboard" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal modal-wide modal-scoreboard">
+      <div class="modal-head">
+        <h2>🏆 Scoreboard</h2>
+        <button class="modal-x" data-close="modal-scoreboard">✕</button>
+      </div>
       <div class="sb-room-info" id="sb-room-info"></div>
-
       <div class="sb-summary" id="sb-summary"></div>
-
       <div class="sb-table-wrap">
         <table class="sb-table" id="sb-table">
           <thead><tr>
             <th>Rank</th>
             <th>Player</th>
-            <th>Games Won</th>
-            <th>Coins Won</th>
-            <th>Net Coins</th>
+            <th>Wins</th>
+            <th>Coins</th>
+            <th>Net</th>
           </tr></thead>
           <tbody id="sb-body"></tbody>
         </table>
       </div>
-
       <div class="sb-games-list" id="sb-games-list"></div>
     </div>
   </div>
-
-  <!-- ===== MODALS ===== -->
 
   <!-- Add Player (host only) -->
   <div id="modal-add-player" class="modal-overlay hidden" role="dialog" aria-modal="true">

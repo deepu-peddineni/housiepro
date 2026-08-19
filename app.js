@@ -341,18 +341,18 @@ function showScreen(name) {
   if (newRoundBtn) newRoundBtn.classList.toggle('hidden', name !== 'game');
 
   const sbBtn = qs('#btn-scoreboard');
-  if (sbBtn) sbBtn.classList.toggle('hidden', name === 'landing' || name === 'scoreboard');
+  if (sbBtn) sbBtn.classList.toggle('hidden', name === 'landing');
 }
 
 // =====================================================
 // ROOM MANAGEMENT
 // =====================================================
 
-function createRoom(hostName, roomName, poolMax, prizeIds, bestOf, entryFee) {
+function createRoom(hostName, roomName, poolMax, prizeIds, bestOf, entryFee, gameMode) {
   const code = genCode();
   const hostId = uid();
 
-  S.room = { code, name: roomName, hostId, poolMax, prizeIds, bestOf: parseInt(bestOf), entryFee: parseInt(entryFee) };
+  S.room = { code, name: roomName, hostId, poolMax, prizeIds, bestOf: parseInt(bestOf), entryFee: parseInt(entryFee), gameMode: gameMode || 'digital' };
   S.players = [{ id: hostId, name: hostName, ticket: null, isHost: true, isLocal: true }];
   S.myPlayerId = hostId;
   S.currentRound = 0;
@@ -363,8 +363,10 @@ function createRoom(hostName, roomName, poolMax, prizeIds, bestOf, entryFee) {
   // Init scoreboard for host
   S.scoreboard[hostId] = { name: hostName, gamesWon: 0, coinsWon: 0, coinsPaid: entryFee };
 
-  // Generate ticket for host
-  S.players[0].ticket = generateTicket(S.room.poolMax);
+  // Generate ticket for host only in digital mode
+  if (S.room.gameMode === 'digital') {
+    S.players[0].ticket = generateTicket(S.room.poolMax);
+  }
 
   initChannel();
   save();
@@ -385,7 +387,7 @@ function joinRoom(code, playerName) {
   }
 
   const playerId = uid();
-  const ticket = generateTicket(S.room.poolMax);
+  const ticket = S.room.gameMode === 'digital' ? generateTicket(S.room.poolMax) : null;
   const player = { id: playerId, name: playerName, ticket, isHost: false, isLocal: true };
 
   S.players.push(player);
@@ -405,14 +407,11 @@ function showLobby() {
   if (!r) return;
 
   qs('#lb-room-name').textContent = r.name;
-  qs('#lb-code-text').textContent = r.code;
-
-  const inviteUrl = `${location.origin}${location.pathname}#room=${r.code}`;
-  qs('#lb-link-box').textContent = inviteUrl;
 
   renderLobbyPlayers();
 
-  qs('#lb-pool-info').textContent = `Pool: 1–${r.poolMax}`;
+  const modeText = r.gameMode === 'paper' ? '📄 Paper Mode' : '📱 Digital Mode';
+  qs('#lb-pool-info').textContent = `${modeText} · Pool: 1–${r.poolMax}`;
   qs('#lb-best-of').textContent = `Best of ${r.bestOf}`;
   qs('#lb-entry-fee').textContent = `Entry: ${r.entryFee} coin${r.entryFee !== 1 ? 's' : ''}`;
 
@@ -619,10 +618,21 @@ function handleRemoteDraw(num) {
 
 function animateNumber(num) {
   const el = qs('#num-display');
+  const ring = qs('.number-ring');
   el.textContent = num;
-  el.classList.remove('pop');
+  el.classList.remove('pop', 'calling', 'called-done');
+  ring?.classList.remove('calling', 'called-done');
   void el.offsetWidth;
-  el.classList.add('pop');
+  el.classList.add('pop', 'calling');
+  ring?.classList.add('calling');
+
+  // After ~2 seconds, switch from red (calling) to green (called)
+  setTimeout(() => {
+    el.classList.remove('calling');
+    el.classList.add('called-done');
+    ring?.classList.remove('calling');
+    ring?.classList.add('called-done');
+  }, 2200);
 }
 
 function updateCurrentNumber() {
@@ -640,10 +650,12 @@ function startAuto() {
   if (S.timerTick) return;
   const speed = getSpeed();
   S.timerRemain = Math.floor(speed / 1000);
+  updateCountdown();
 
   S.timerTick = setInterval(() => {
     S.timerRemain--;
     if (S.timerRemain <= 3 && S.timerRemain > 0) playTick(S.timerRemain === 1);
+    updateCountdown();
     if (S.timerRemain <= 0) {
       const num = drawNumber();
       if (num === null) { stopAuto(); return; }
@@ -661,6 +673,22 @@ function stopAuto() {
   S.timerRemain = 0;
   const btn = qs('#btn-auto');
   if (btn) { btn.classList.remove('active'); btn.innerHTML = '▶&nbsp; Auto'; }
+  updateCountdown();
+}
+
+function updateCountdown() {
+  const bar = qs('#countdown-fill');
+  const wrap = qs('#countdown-bar');
+  if (!bar || !wrap) return;
+  if (!S.timerTick || S.timerRemain <= 0) {
+    bar.style.width = '0%';
+    wrap.classList.remove('active');
+    return;
+  }
+  wrap.classList.add('active');
+  const speed = Math.floor(getSpeed() / 1000);
+  const pct = ((speed - S.timerRemain) / speed) * 100;
+  bar.style.width = `${pct}%`;
 }
 
 function toggleAuto() { S.timerTick ? stopAuto() : startAuto(); }
@@ -675,20 +703,29 @@ function awardPrize(prizeId, playerId) {
 
   const prize = curRound.prizes.find(p => p.id === prizeId);
   const player = S.players.find(p => p.id === playerId);
-  if (!prize || !player || prize.winnerId) return;
+  if (!prize || !player) return;
 
-  prize.winnerId = playerId;
+  // Support multiple winners
+  if (!prize.winnerIds) prize.winnerIds = prize.winnerId ? [prize.winnerId] : [];
+  if (prize.winnerIds.includes(playerId)) return; // Already won
+
+  prize.winnerIds.push(playerId);
+  prize.winnerId = prize.winnerIds[0]; // Keep first winner for compatibility
   prize.wonAt = S.drawn.length;
   save();
 
   // Update scoreboard
   if (S.scoreboard[playerId]) {
-    S.scoreboard[playerId].coinsWon += S.room.entryFee * 2; // Winner gets entry fee x2
+    S.scoreboard[playerId].coinsWon += S.room.entryFee * 2;
   }
 
   playWinner();
-  speak(`Winner! ${player.name} wins ${prize.name}!`);
-  showWinnerModal(player.name, prize.name, prize.icon, prize.wonAt);
+  const allNames = prize.winnerIds.map(id => {
+    const w = S.players.find(pl => pl.id === id);
+    return w ? w.name : '?';
+  }).join(', ');
+  speak(`Winner! ${allNames} win${prize.winnerIds.length > 1 ? '' : 's'} ${prize.name}!`);
+  showWinnerModal(allNames, prize.name, prize.icon, prize.wonAt);
 
   if (S.channel) {
     S.channel.postMessage({ type: 'prize-awarded', prizeId, playerId });
@@ -706,10 +743,13 @@ function completeRound() {
   const curRound = S.rounds.find(rn => rn.roundNo === S.currentRound);
   if (curRound) curRound.completed = true;
 
-  // Mark round winner in scoreboard
+  // Mark round winners in scoreboard (full house winners)
   const fhPrize = curRound.prizes.find(p => p.id === 'full-house');
-  if (fhPrize && fhPrize.winnerId && S.scoreboard[fhPrize.winnerId]) {
-    S.scoreboard[fhPrize.winnerId].gamesWon++;
+  if (fhPrize) {
+    const winnerIds = fhPrize.winnerIds || (fhPrize.winnerId ? [fhPrize.winnerId] : []);
+    winnerIds.forEach(id => {
+      if (S.scoreboard[id]) S.scoreboard[id].gamesWon++;
+    });
   }
 
   save();
@@ -725,6 +765,7 @@ function completeRound() {
 function nextRound() {
   if (S.currentRound >= S.room.bestOf) {
     // Tournament complete
+    closeModal('modal-round-over');
     showScoreboard();
     return;
   }
@@ -832,8 +873,14 @@ function renderRoundList() {
 
   list.innerHTML = S.rounds.map(rn => {
     const fhPrize = rn.prizes.find(p => p.id === 'full-house');
-    const winner = fhPrize?.winnerId ? S.players.find(p => p.id === fhPrize.winnerId) : null;
-    const wonCount = rn.prizes.filter(p => p.winnerId).length;
+    const winnerIds = fhPrize?.winnerIds || (fhPrize?.winnerId ? [fhPrize.winnerId] : []);
+    const winnerNames = winnerIds.map(id => {
+      const w = S.players.find(p => p.id === id);
+      return w ? w.name : '?';
+    }).join(', ');
+    const wonCount = rn.prizes.filter(p => {
+      return (p.winnerIds && p.winnerIds.length > 0) || p.winnerId;
+    }).length;
     return `
       <div class="game-item ${rn.roundNo === S.currentRound ? 'active' : ''} ${rn.completed ? 'completed' : ''}">
         <div class="gi-name">Round ${rn.roundNo}</div>
@@ -841,7 +888,7 @@ function renderRoundList() {
           <span>${rn.drawn.length}/${S.room.poolMax} drawn</span>
           ${wonCount ? `<span style="color:var(--amber)">${wonCount} prize${wonCount > 1 ? 's' : ''}</span>` : ''}
         </div>
-        ${winner ? `<div class="gi-meta"><span style="color:var(--green)">🏆 ${esc(winner.name)}</span></div>` : ''}
+        ${winnerNames ? `<div class="gi-meta"><span style="color:var(--green)">🏆 ${esc(winnerNames)}</span></div>` : ''}
       </div>`;
   }).join('');
 }
@@ -858,7 +905,10 @@ function renderPlayers() {
 
   list.innerHTML = S.players.map(p => {
     const curRound = S.rounds.find(rn => rn.roundNo === S.currentRound);
-    const wins = curRound ? curRound.prizes.filter(pr => pr.winnerId === p.id).map(pr => pr.icon).join(' ') : '';
+    const wins = curRound ? curRound.prizes.filter(pr => {
+    const ids = pr.winnerIds || (pr.winnerId ? [pr.winnerId] : []);
+    return ids.includes(p.id);
+  }).map(pr => pr.icon).join(' ') : '';
     const score = S.scoreboard[p.id];
     const isMe = p.id === S.myPlayerId;
     return `
@@ -871,6 +921,7 @@ function renderPlayers() {
         </div>
         <div class="player-actions">
           ${isMe && p.ticket ? `<button class="btn btn-xs btn-outline" onclick="showTicket('${p.id}')" title="View your ticket">🎫</button>` : ''}
+          ${S.room?.gameMode === 'paper' && isMe ? `<span class="paper-badge">📄</span>` : ''}
         </div>
       </div>`;
   }).join('');
@@ -886,24 +937,32 @@ function renderPrizes() {
   if (!curRound) { list.innerHTML = '<p class="hint-text">No active round</p>'; return; }
 
   list.innerHTML = curRound.prizes.map(p => {
-    const winner = p.winnerId ? S.players.find(pl => pl.id === p.winnerId) : null;
-    const playerBtns = !winner && S.players.length
-      ? `<div class="prize-btn-row">${S.players.map(pl =>
-          `<button class="btn btn-xs btn-green prize-claim"
+    const winnerIds = p.winnerIds || (p.winnerId ? [p.winnerId] : []);
+    const winners = winnerIds.map(id => S.players.find(pl => pl.id === id)).filter(Boolean);
+    const hasWinners = winners.length > 0;
+
+    // Show player buttons if no winners OR if we want to allow more winners
+    const playerBtns = S.players.length
+      ? `<div class="prize-btn-row">${S.players.map(pl => {
+          const alreadyWon = winnerIds.includes(pl.id);
+          return `<button class="btn btn-xs ${alreadyWon ? 'btn-ghost' : 'btn-green'} prize-claim"
                    onclick="awardPrize('${p.id}','${pl.id}')"
-                   title="Award ${p.name} to ${esc(pl.name)}">
-             ${esc(pl.name)}
-           </button>`).join('')}</div>`
-      : (!winner && !S.players.length) ? '<p class="hint-text" style="padding:3px 0">No players</p>' : '';
+                   title="Award ${p.name} to ${esc(pl.name)}"
+                   ${alreadyWon ? 'disabled' : ''}>
+             ${esc(pl.name)}${alreadyWon ? ' ✓' : ''}
+           </button>`;
+        }).join('')}</div>`
+      : '<p class="hint-text" style="padding:3px 0">No players</p>';
 
     return `
-      <div class="prize-card ${winner ? 'won' : ''}">
+      <div class="prize-card ${hasWinners ? 'won' : ''}">
         <div class="prize-row">
           <span class="prize-icon">${p.icon}</span>
           <span class="prize-name">${p.name}</span>
           ${p.wonAt ? `<span class="prize-at">call #${p.wonAt}</span>` : ''}
         </div>
-        ${winner ? `<div class="prize-winner-name">🏆 ${esc(winner.name)}</div>` : playerBtns}
+        ${hasWinners ? `<div class="prize-winner-name">🏆 ${winners.map(w => esc(w.name)).join(', ')}</div>` : ''}
+        ${playerBtns}
       </div>`;
   }).join('');
 }
@@ -945,7 +1004,14 @@ function showTicket(playerId) {
 
 function buildTicketHTML(grid, drawn, max) {
   const drawnSet = new Set(drawn);
-  let html = '<table class="ticket-table"><tbody>';
+  let html = '<table class="ticket-table"><thead><tr>';
+  // Column headers (1-10, 11-20, etc.)
+  for (let c = 0; c < 9; c++) {
+    const lo = c === 0 ? 1 : c * 10;
+    const hi = c === 8 ? max : Math.min((c + 1) * 10 - 1, max);
+    html += `<th class="ticket-th">${lo}–${hi}</th>`;
+  }
+  html += '</tr></thead><tbody>';
   for (let r = 0; r < 3; r++) {
     html += '<tr>';
     for (let c = 0; c < 9; c++) {
@@ -981,9 +1047,16 @@ function showWinnerModal(playerName, prizeName, icon, callNo) {
 
 function showRoundOverModal() {
   const curRound = S.rounds.find(rn => rn.roundNo === S.currentRound);
-  const winners = curRound ? curRound.prizes.filter(p => p.winnerId).map(p => {
-    const w = S.players.find(pl => pl.id === p.winnerId);
-    return `<div style="margin:4px 0;font-size:13px">${p.icon} <strong>${p.name}</strong>: ${w ? esc(w.name) : '?'}</div>`;
+  const winners = curRound ? curRound.prizes.filter(p => {
+    const ids = p.winnerIds || (p.winnerId ? [p.winnerId] : []);
+    return ids.length > 0;
+  }).map(p => {
+    const ids = p.winnerIds || (p.winnerId ? [p.winnerId] : []);
+    const names = ids.map(id => {
+      const w = S.players.find(pl => pl.id === id);
+      return w ? esc(w.name) : '?';
+    }).join(', ');
+    return `<div style="margin:4px 0;font-size:13px">${p.icon} <strong>${p.name}</strong>: ${names}</div>`;
   }).join('') : '';
 
   qs('#round-over-info').innerHTML = winners || '<div style="color:var(--t3)">No prizes claimed this round</div>';
@@ -991,6 +1064,7 @@ function showRoundOverModal() {
   const isLast = S.currentRound >= S.room.bestOf;
   qs('#btn-next-round').textContent = isLast ? 'View Final Scoreboard' : 'Next Round →';
   qs('#btn-next-round').onclick = isLast ? () => { closeModal('modal-round-over'); showScoreboard(); } : nextRound;
+  qs('#btn-view-scoreboard').onclick = () => { closeModal('modal-round-over'); showScoreboard(); };
 
   openModal('modal-round-over');
 }
@@ -1000,17 +1074,15 @@ function showRoundOverModal() {
 // =====================================================
 
 function showScoreboard() {
-  showScreen('scoreboard');
   stopAuto();
-
   const r = S.room;
   if (!r) return;
 
-  qs('#sb-room-info').innerHTML = `<strong>${esc(r.name)}</strong> &middot; Code: ${r.code} &middot; Pool: 1–${r.poolMax} &middot; Best of ${r.bestOf}`;
+  qs('#sb-room-info').innerHTML = `<strong>${esc(r.name)}</strong> · ${r.gameMode === 'paper' ? '📄 Paper' : '📱 Digital'} · Pool: 1–${r.poolMax} · Best of ${r.bestOf}`;
 
   // Summary stats
   const totalRounds = S.rounds.filter(rn => rn.completed).length;
-  const totalPrizes = S.rounds.reduce((sum, rn) => sum + rn.prizes.filter(p => p.winnerId).length, 0);
+  const totalPrizes = S.rounds.reduce((sum, rn) => sum + rn.prizes.filter(p => p.winnerIds && p.winnerIds.length ? true : p.winnerId).length, 0);
   qs('#sb-summary').innerHTML = `
     <div class="sb-stat"><div class="sb-stat-val">${totalRounds}</div><div class="sb-stat-label">Rounds</div></div>
     <div class="sb-stat"><div class="sb-stat-val">${S.players.length}</div><div class="sb-stat-label">Players</div></div>
@@ -1038,9 +1110,16 @@ function showScoreboard() {
   const gamesList = qs('#sb-games-list');
   gamesList.innerHTML = '<h3 style="font-size:14px;color:var(--t2);margin-bottom:10px">Round-by-Round Results</h3>' +
     S.rounds.map(rn => {
-      const winners = rn.prizes.filter(p => p.winnerId).map(p => {
-        const w = S.players.find(pl => pl.id === p.winnerId);
-        return `<div class="sb-game-result">${p.icon} ${p.name}: <strong>${w ? esc(w.name) : '?'}</strong></div>`;
+      const winners = rn.prizes.filter(p => {
+        const ids = p.winnerIds || (p.winnerId ? [p.winnerId] : []);
+        return ids.length > 0;
+      }).map(p => {
+        const ids = p.winnerIds || (p.winnerId ? [p.winnerId] : []);
+        const names = ids.map(id => {
+          const w = S.players.find(pl => pl.id === id);
+          return w ? esc(w.name) : '?';
+        }).join(', ');
+        return `<div class="sb-game-result">${p.icon} ${p.name}: <strong>${names}</strong>${p.wonAt ? ` (call #${p.wonAt})` : ''}</div>`;
       }).join('');
       return `
         <div class="sb-game-card">
@@ -1048,6 +1127,8 @@ function showScoreboard() {
           ${winners || '<div class="sb-game-result" style="color:var(--t3)">No prizes claimed</div>'}
         </div>`;
     }).join('');
+
+  openModal('modal-scoreboard');
 }
 
 // =====================================================
@@ -1100,14 +1181,21 @@ function populateVoiceSelector() {
   const sel = qs('#voice-select');
   if (!sel) return;
   sel.innerHTML = '';
+
+  // Prefer English voices, show up to 10
   const en = S.voices.filter(v => v.lang.startsWith('en'));
-  const all = en.length ? en : S.voices.slice(0, 8);
+  const all = en.length >= 3 ? en.slice(0, 10) : S.voices.slice(0, 10);
+
   all.forEach((v, i) => {
     const opt = document.createElement('option');
-    opt.value = S.voices.indexOf(v);
-    opt.textContent = `${v.name} (${v.lang})`;
+    const idx = S.voices.indexOf(v);
+    opt.value = idx;
+    // Show short name
+    const shortName = v.name.replace(/^(Microsoft |Google |Apple )/, '').replace(/ voices?$/i, '');
+    opt.textContent = `${shortName} (${v.lang})`;
     sel.appendChild(opt);
   });
+
   if (S.voiceIndex !== undefined && sel.querySelector(`option[value="${S.voiceIndex}"]`)) {
     sel.value = S.voiceIndex;
   }
@@ -1120,6 +1208,9 @@ function populateVoiceSelector() {
 function openAddPlayerModal() {
   qs('#new-player-name').value = '';
   qs('#gen-ticket').checked = true;
+  // Hide ticket option in paper mode
+  const ticketRow = qs('#gen-ticket')?.closest('.check-label');
+  if (ticketRow) ticketRow.style.display = S.room?.gameMode === 'paper' ? 'none' : '';
   openModal('modal-add-player');
   setTimeout(() => qs('#new-player-name').focus(), 60);
 }
@@ -1160,12 +1251,25 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── Full scoreboard button ──
   qs('#btn-sb-full')?.addEventListener('click', showScoreboard);
 
-  // ── Mid-game share button ──
-  qs('#btn-share-game')?.addEventListener('click', () => {
+  // ── Invite modal ──
+  function openInviteModal() {
     if (!S.room) return;
     const url = `${location.origin}${location.pathname}#room=${S.room.code}`;
-    navigator.clipboard?.writeText(url).then(() => toast('Invite link copied!'))
-      .catch(() => toast(`Room code: ${S.room.code}`));
+    qs('#invite-link-display').textContent = url;
+    qs('#invite-code-value').textContent = S.room.code;
+    openModal('modal-invite');
+    // Auto-copy
+    const text = `Join my Housie game!\nCode: ${S.room.code}\nLink: ${url}`;
+    navigator.clipboard?.writeText(text).then(() => toast('Link & code copied!'))
+      .catch(() => {});
+  }
+  qs('#btn-share-game')?.addEventListener('click', openInviteModal);
+  qs('#btn-lobby-invite')?.addEventListener('click', openInviteModal);
+  qs('#btn-invite-copy')?.addEventListener('click', () => {
+    if (!S.room) return;
+    const url = `${location.origin}${location.pathname}#room=${S.room.code}`;
+    const text = `Join my Housie game!\nCode: ${S.room.code}\nLink: ${url}`;
+    navigator.clipboard?.writeText(text).then(() => toast('Copied!'));
   });
 
   // ── Landing buttons ──
@@ -1198,11 +1302,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const prizeIds = [...qsa('#cr-prizes input[type=checkbox]:checked')].map(el => el.value);
     const bestOf = Math.max(1, parseInt(qs('#cr-best-of').value, 10) || 5);
     const entryFee = qs('#cr-entry-fee').value;
+    const gameMode = qs('.mode-btn.active')?.dataset.mode || 'digital';
 
     if (!hostName) { toast('Enter your name'); return; }
     if (!prizeIds.length) { toast('Select at least one prize'); return; }
 
-    createRoom(hostName, roomName, pool, prizeIds, bestOf, entryFee);
+    createRoom(hostName, roomName, pool, prizeIds, bestOf, entryFee, gameMode);
   });
 
   qs('#cr-host-name').addEventListener('keydown', e => { if (e.key === 'Enter') qs('#btn-do-create').click(); });
@@ -1223,13 +1328,6 @@ document.addEventListener('DOMContentLoaded', () => {
   qs('#jn-name').addEventListener('keydown', e => { if (e.key === 'Enter') qs('#btn-do-join').click(); });
 
   // ── Lobby ──
-  qs('#btn-copy-code').addEventListener('click', () => {
-    navigator.clipboard?.writeText(S.room?.code || '').then(() => toast('Code copied!'));
-  });
-  qs('#btn-copy-link').addEventListener('click', () => {
-    const url = `${location.origin}${location.pathname}#room=${S.room?.code || ''}`;
-    navigator.clipboard?.writeText(url).then(() => toast('Link copied!'));
-  });
   qs('#btn-start-game').addEventListener('click', startGame);
   qs('#btn-lobby-add-player').addEventListener('click', () => openAddPlayerModal());
 
@@ -1242,9 +1340,13 @@ document.addEventListener('DOMContentLoaded', () => {
   qs('#btn-new-round').addEventListener('click', nextRound);
 
   qs('#btn-scoreboard').addEventListener('click', showScoreboard);
-  qs('#btn-back-score').addEventListener('click', () => {
-    if (S.room) showScreen('game');
-    else showScreen('landing');
+
+  // ── Mode toggle ──
+  qsa('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      qsa('.mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
   });
 
   // ── Pool preset ──
@@ -1264,7 +1366,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const name = qs('#new-player-name').value.trim();
     if (!name) { toast('Enter player name'); return; }
     const playerId = uid();
-    const ticket = qs('#gen-ticket').checked ? generateTicket(S.room.poolMax) : null;
+    const ticket = qs('#gen-ticket').checked && S.room.gameMode === 'digital' ? generateTicket(S.room.poolMax) : null;
     S.players.push({ id: playerId, name, ticket, isHost: false, isLocal: true });
     S.scoreboard[playerId] = { name, gamesWon: 0, coinsWon: 0, coinsPaid: S.room.entryFee };
     save();
