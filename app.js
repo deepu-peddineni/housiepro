@@ -23,10 +23,6 @@ const ALL_PRIZES = [
 
 const DEFAULT_PRIZE_IDS = ['early-five', 'top-row', 'mid-row', 'bot-row', 'full-house'];
 
-const DIGIT_WORDS = [
-  'zero','one','two','three','four','five','six','seven','eight','nine'
-];
-
 // =====================================================
 // STATE
 // =====================================================
@@ -52,6 +48,7 @@ const S = {
   scoreboard:     {},    // { [playerId]: { name, gamesWon, coinsWon, coinsPaid } }
   // Audio
   voices:         [],
+  voiceIndex:     undefined,
   audioCtx:       null,
   // BroadcastChannel
   channel:        null,
@@ -119,6 +116,7 @@ function save() {
     localStorage.setItem('hp-currentRound', String(S.currentRound));
     localStorage.setItem('hp-drawn', JSON.stringify(S.drawn));
     localStorage.setItem('hp-theme', S.theme);
+    if (S.voiceIndex !== undefined) localStorage.setItem('hp-voice', String(S.voiceIndex));
   } catch (e) {}
 }
 
@@ -132,6 +130,8 @@ function load() {
     S.currentRound = parseInt(localStorage.getItem('hp-currentRound') || '0', 10);
     S.drawn = JSON.parse(localStorage.getItem('hp-drawn')) || [];
     S.theme = localStorage.getItem('hp-theme') || 'dark';
+    const vi = localStorage.getItem('hp-voice');
+    S.voiceIndex = vi !== null ? parseInt(vi, 10) : undefined;
   } catch (e) {
     S.room = null; S.players = []; S.rounds = []; S.scoreboard = {};
   }
@@ -206,7 +206,7 @@ function playTick(last = false) {
 }
 
 // =====================================================
-// TTS – Enhanced: "Number thirty, three zero"
+// TTS – "Number thirty"
 // =====================================================
 
 function loadVoices() {
@@ -215,6 +215,8 @@ function loadVoices() {
 }
 
 function pickVoice() {
+  // Use saved voice index if available
+  if (S.voiceIndex !== undefined && S.voices[S.voiceIndex]) return S.voices[S.voiceIndex];
   const v = S.voices;
   return v.find(x => x.lang.startsWith('en') && x.name.includes('Google'))
       || v.find(x => x.lang.startsWith('en') && x.localService)
@@ -227,29 +229,19 @@ function numberToWords(n) {
   const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
   if (n <= 19) {
     const ones = ['','one','two','three','four','five','six','seven','eight','nine','ten',
-                  'eleven','twelve','thirteen','fourteen','fifty','sixteen','seventeen','eighteen','nineteen'];
+                  'eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
     return ones[n];
   }
   if (n % 10 === 0) return tens[Math.floor(n / 10)];
-  return tens[Math.floor(n / 10)] + '-' + (n % 10 === 0 ? '' : ['','','two','three','four','five','six','seven','eight','nine'][n % 10]);
-}
-
-function digitsAsWords(n) {
-  return String(n).split('').map(d => DIGIT_WORDS[parseInt(d)]).join(', ');
+  return tens[Math.floor(n / 10)] + '-' + (['','','two','three','four','five','six','seven','eight','nine'][n % 10]);
 }
 
 function speakNumber(num) {
   if (!window.speechSynthesis) return;
   speechSynthesis.cancel();
-  // Say the number in words, then the digits
-  const wordPart = numberToWords(num);
-  const digitPart = digitsAsWords(num);
-  const text = `Number ${wordPart}. ${digitPart}`;
-
+  const text = `Number ${numberToWords(num)}`;
   const u = new SpeechSynthesisUtterance(text);
-  u.rate = 0.85;
-  u.pitch = 1.05;
-  u.volume = 1;
+  u.rate = 0.85; u.pitch = 1.05; u.volume = 1;
   const voice = pickVoice();
   if (voice) u.voice = voice;
   speechSynthesis.speak(u);
@@ -764,8 +756,8 @@ function renderBoard() {
   const drawn = new Set(S.drawn);
   const board = qs('#number-board');
 
-  const cols = max <= 75 ? 5 : max <= 90 ? 9 : 10;
-  board.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  // Always 10 columns: 1-10, 11-20, etc.
+  board.style.gridTemplateColumns = 'repeat(10, 1fr)';
   board.classList.toggle('board-lg', max <= 50);
 
   board.innerHTML = '';
@@ -1069,6 +1061,27 @@ function renderAll() {
 }
 
 // =====================================================
+// VOICE SELECTOR
+// =====================================================
+
+function populateVoiceSelector() {
+  const sel = qs('#voice-select');
+  if (!sel) return;
+  sel.innerHTML = '';
+  const en = S.voices.filter(v => v.lang.startsWith('en'));
+  const all = en.length ? en : S.voices.slice(0, 8);
+  all.forEach((v, i) => {
+    const opt = document.createElement('option');
+    opt.value = S.voices.indexOf(v);
+    opt.textContent = `${v.name} (${v.lang})`;
+    sel.appendChild(opt);
+  });
+  if (S.voiceIndex !== undefined && sel.querySelector(`option[value="${S.voiceIndex}"]`)) {
+    sel.value = S.voiceIndex;
+  }
+}
+
+// =====================================================
 // ADD PLAYER MODAL
 // =====================================================
 
@@ -1085,13 +1098,30 @@ function openAddPlayerModal() {
 
 document.addEventListener('DOMContentLoaded', () => {
   load();
-  loadVoices();
-  if (window.speechSynthesis) speechSynthesis.onvoiceschanged = loadVoices;
-
   applyTheme(S.theme);
 
   // ── Theme toggles ──
   qsa('.theme-toggle').forEach(btn => btn.addEventListener('click', toggleTheme));
+
+  // ── Voice selector ──
+  loadVoices();
+  if (window.speechSynthesis) {
+    speechSynthesis.onvoiceschanged = () => { loadVoices(); populateVoiceSelector(); };
+  }
+  setTimeout(populateVoiceSelector, 300);
+  qs('#voice-select')?.addEventListener('change', e => {
+    S.voiceIndex = parseInt(e.target.value, 10);
+    save();
+    toast('Voice updated');
+  });
+
+  // ── Mid-game share button ──
+  qs('#btn-share-game')?.addEventListener('click', () => {
+    if (!S.room) return;
+    const url = `${location.origin}${location.pathname}#room=${S.room.code}`;
+    navigator.clipboard?.writeText(url).then(() => toast('Invite link copied!'))
+      .catch(() => toast(`Room code: ${S.room.code}`));
+  });
 
   // ── Landing buttons ──
   qs('#btn-create-room').addEventListener('click', () => {
@@ -1117,9 +1147,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const hostName = qs('#cr-host-name').value.trim();
     const roomName = qs('#cr-room-name').value.trim() || `Housie Room`;
     const poolV = qs('input[name="crpool"]:checked')?.value || '90';
-    const pool = parseInt(poolV, 10);
+    const pool = poolV === 'custom'
+      ? Math.max(10, parseInt(qs('#cr-custom-pool').value, 10) || 90)
+      : parseInt(poolV, 10);
     const prizeIds = [...qsa('#cr-prizes input[type=checkbox]:checked')].map(el => el.value);
-    const bestOf = qs('#cr-best-of').value;
+    const bestOf = Math.max(1, parseInt(qs('#cr-best-of').value, 10) || 5);
     const entryFee = qs('#cr-entry-fee').value;
 
     if (!hostName) { toast('Enter your name'); return; }
@@ -1244,6 +1276,13 @@ document.addEventListener('DOMContentLoaded', () => {
       showLobby();
     }
   }
+
+  // ── Mobile sidebar toggle ──
+  qs('.sidebar-right')?.addEventListener('click', function(e) {
+    if (window.innerWidth <= 768 && e.target === this) {
+      this.classList.toggle('open');
+    }
+  });
 
   // ── Warm up audio ──
   document.addEventListener('pointerdown', () => getAudioCtx(), { once: true });

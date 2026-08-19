@@ -46,7 +46,7 @@
       <span class="vdiv"></span>
 
       <div class="ctrl-group">
-        <label class="ctrl-label" for="auto-speed">Speed</label>
+        <label class="ctrl-label" for="auto-speed" title="Auto-draw interval">Interval</label>
         <select id="auto-speed" class="select">
           <option value="8000">8 s</option>
           <option value="5000">5 s</option>
@@ -54,6 +54,13 @@
           <option value="2000">2 s</option>
           <option value="1000">1 s</option>
         </select>
+      </div>
+
+      <span class="vdiv"></span>
+
+      <div class="ctrl-group">
+        <label class="ctrl-label" for="voice-select" title="TTS Voice">Voice</label>
+        <select id="voice-select" class="select" style="max-width:140px"></select>
       </div>
 
       <span class="vdiv"></span>
@@ -72,6 +79,7 @@
     </nav>
 
     <div class="topbar-right">
+      <button id="btn-share-game" class="btn btn-outline" title="Copy invite link">🔗 Invite</button>
       <button id="btn-theme" class="theme-toggle" title="Toggle theme" aria-label="Toggle theme">🌙</button>
       <button id="btn-scoreboard" class="btn btn-outline">🏆 Scoreboard</button>
       <button id="btn-new-round" class="btn btn-primary hidden">＋ New Round</button>
@@ -128,6 +136,9 @@
           <label class="radio-opt"><input type="radio" name="crpool" value="100"> 1 – 100</label>
           <label class="radio-opt"><input type="radio" name="crpool" value="75"> 1 – 75</label>
           <label class="radio-opt"><input type="radio" name="crpool" value="50"> 1 – 50</label>
+          <label class="radio-opt"><input type="radio" name="crpool" value="custom"> Custom:
+            <input type="number" id="cr-custom-pool" class="input-sm" min="10" max="999" value="90" style="width:70px">
+          </label>
         </div>
       </div>
 
@@ -138,14 +149,8 @@
 
       <div class="field-row">
         <div class="field" style="flex:1">
-          <label class="field-label" for="cr-best-of">Best Of</label>
-          <select id="cr-best-of" class="select" style="width:100%">
-            <option value="1">1 game</option>
-            <option value="3">3 games</option>
-            <option value="5" selected>5 games</option>
-            <option value="7">7 games</option>
-            <option value="10">10 games</option>
-          </select>
+          <label class="field-label" for="cr-best-of">Number of Games</label>
+          <input type="number" id="cr-best-of" class="field-input" min="1" max="99" value="5">
         </div>
         <div class="field" style="flex:1">
           <label class="field-label" for="cr-entry-fee">Entry Fee (coins)</label>

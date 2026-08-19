@@ -580,6 +580,8 @@ body {
 }
 .select { padding: 5px 8px; font-size: 12px; cursor: pointer; }
 .field-input { padding: 9px 12px; font-size: 14px; width: 100%; }
+.input-sm { padding: 5px 8px; font-size: 12px; width: 70px; background: var(--surf-2); border: 1px solid var(--bdr-hi); color: var(--t1); border-radius: var(--r); font-family: 'Inter', sans-serif; outline: none; }
+.input-sm:focus { border-color: var(--purple); box-shadow: 0 0 0 3px rgba(139,92,246,.18); }
 
 .select:focus, .field-input:focus {
   border-color: var(--purple);
@@ -795,6 +797,121 @@ body {
 [data-theme="light"] .progress-track { background: rgba(0,0,0,.08); }
 [data-theme="light"] .invite-link-box { background: var(--surf-2); }
 [data-theme="light"] .toast { box-shadow: 0 4px 20px rgba(0,0,0,.15); }
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+
+/* Tablet (≤1024px) */
+@media (max-width: 1024px) {
+  :root {
+    --sidebar-l: 200px;
+    --sidebar-r: 260px;
+  }
+  .topbar-brand .brand-wordmark { font-size: 14px; letter-spacing: 2px; }
+  .topbar-room-info { display: none; }
+}
+
+/* Mobile landscape / small tablet (≤768px) */
+@media (max-width: 768px) {
+  :root {
+    --topbar-h: 52px;
+    --sidebar-l: 0px;
+    --sidebar-r: 0px;
+  }
+
+  .topbar {
+    flex-wrap: wrap; height: auto; padding: 8px 10px; gap: 6px;
+    min-height: var(--topbar-h);
+  }
+  .topbar-brand { display: none; }
+  .topbar-room-info { display: none; }
+  .topbar-controls {
+    order: 3; width: 100%;
+    gap: 5px; flex-wrap: wrap;
+  }
+  .ctrl-group { gap: 4px; }
+  .ctrl-label { font-size: 10px; }
+  .vdiv { display: none; }
+  .draw-group { width: 100%; justify-content: center; }
+  .topbar-right { order: 2; gap: 4px; }
+  .topbar-right .btn { padding: 5px 10px; font-size: 11px; }
+  .topbar-right .theme-toggle { width: 28px; height: 28px; font-size: 13px; }
+
+  /* Game layout: single column */
+  .app-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  .sidebar-left { display: none; }
+  .sidebar-right {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    height: 45vh; z-index: 100;
+    border-left: none; border-top: 1px solid var(--bdr);
+    border-radius: var(--r-xl) var(--r-xl) 0 0;
+    transform: translateY(calc(100% - 40px));
+    transition: transform .3s var(--ease);
+  }
+  .sidebar-right.open { transform: translateY(0); }
+  .sidebar-right::before {
+    content: '▲ Players & Prizes';
+    display: block; text-align: center; padding: 8px;
+    font-size: 11px; font-weight: 600; color: var(--t3);
+    text-transform: uppercase; letter-spacing: 1px;
+    cursor: pointer;
+  }
+
+  .main-area { padding: 8px; gap: 8px; }
+  .announce-card { padding: 12px 10px 10px; }
+  .number-ring { width: 110px; height: 110px; }
+  .number-big { font-size: 52px; }
+  .number-board { gap: 2px; }
+  .board-cell { font-size: 10px; border-radius: 4px; }
+  .board-lg .board-cell { font-size: 12px; }
+
+  .prev-num { width: 26px; height: 26px; font-size: 10px; }
+
+  /* Forms */
+  .form-card, .lobby-card, .scoreboard-card {
+    max-width: 100%; margin: 10px; padding: 20px;
+    max-height: calc(100vh - 20px);
+  }
+  .field-row { flex-direction: column; gap: 0; }
+  .code-input { font-size: 24px !important; letter-spacing: 6px !important; }
+  .invite-code-text { font-size: 26px; letter-spacing: 6px; }
+
+  /* Scoreboard */
+  .sb-summary { gap: 8px; }
+  .sb-stat { min-width: 70px; padding: 8px 10px; }
+  .sb-stat-val { font-size: 18px; }
+  .sb-table { font-size: 12px; }
+  .sb-table th, .sb-table td { padding: 6px 8px; }
+}
+
+/* Mobile portrait (≤480px) */
+@media (max-width: 480px) {
+  html { font-size: 13px; }
+
+  .number-ring { width: 90px; height: 90px; }
+  .number-big { font-size: 42px; }
+  .board-cell { font-size: 9px; aspect-ratio: auto; padding: 5px 2px; }
+
+  .landing-emoji { font-size: 36px; }
+  .landing-title { font-size: 28px; letter-spacing: 2px; }
+  .landing-sub { font-size: 13px; margin-bottom: 28px; }
+  .landing-actions { flex-direction: column; align-items: center; }
+  .btn-lg { padding: 10px 20px; font-size: 14px; }
+
+  .lobby-emoji { font-size: 28px; }
+  .lobby-header h2 { font-size: 17px; }
+  .invite-code-text { font-size: 22px; letter-spacing: 4px; }
+
+  .modal { padding: 16px; margin: 8px; }
+  .modal-wide { max-width: 100%; }
+
+  .prize-check-row { padding: 6px 8px; }
+  .prize-check-desc { font-size: 10px; }
+}
 
 /* ============================================================
    PRINT
