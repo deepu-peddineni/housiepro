@@ -24,7 +24,7 @@
   --t2: #94a3b8;
   --t3: #475569;
 
-  --topbar-h: 58px;
+  --topbar-h: 50px;
   --sidebar-l: 240px;
   --sidebar-r: 300px;
   --r:    10px;
@@ -278,7 +278,18 @@ body {
 .ctrl-label { font-size: 11px; color: var(--t3); text-transform: uppercase; letter-spacing: .8px; white-space: nowrap; }
 .vdiv { width: 1px; height: 26px; background: var(--bdr-hi); flex-shrink: 0; }
 .draw-group { gap: 6px; }
-.topbar-right { display: flex; gap: 6px; flex-shrink: 0; margin-left: auto; }
+.btn-draw { padding: 8px 20px; font-size: 14px; font-weight: 700; }
+.btn-settings { font-size: 12px; padding: 6px 12px; }
+.topbar-right { display: flex; gap: 5px; flex-shrink: 0; margin-left: auto; align-items: center; }
+
+.settings-panel {
+  position: fixed; top: var(--topbar-h); left: 50%; transform: translateX(-50%);
+  z-index: 199; background: var(--bg-panel-solid); border: 1px solid var(--bdr-hi);
+  border-radius: 0 0 var(--r-lg) var(--r-lg); padding: 10px 16px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.4); backdrop-filter: blur(12px);
+}
+.settings-panel.hidden { display: none !important; }
+.settings-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: center; }
 
 /* ============================================================
    APP LAYOUT (game screen)
@@ -334,8 +345,8 @@ body {
    CENTER MAIN
    ============================================================ */
 .main-area {
-  display: flex; flex-direction: column; gap: 10px;
-  padding: 12px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 10px; overflow-y: auto;
 }
 .main-area::-webkit-scrollbar { width: 4px; }
 .main-area::-webkit-scrollbar-thumb { background: var(--bdr-hi); border-radius: 4px; }
@@ -345,7 +356,7 @@ body {
   background: var(--surf-1);
   border: 1px solid var(--bdr);
   border-radius: var(--r-xl);
-  padding: 18px 16px 14px;
+  padding: 12px 14px 10px;
   text-align: center;
   flex-shrink: 0;
 }
@@ -357,12 +368,12 @@ body {
 }
 .game-label {
   font-size: 11px; color: var(--t3); text-transform: uppercase; letter-spacing: 1.5px;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
-.number-stage { display: flex; align-items: center; justify-content: center; margin: 4px 0; }
+.number-stage { display: flex; align-items: center; justify-content: center; margin: 2px 0; }
 .number-ring {
   position: relative;
-  width: 140px; height: 140px;
+  width: 110px; height: 110px;
   border-radius: 50%;
   background: radial-gradient(circle, rgba(139,92,246,.12), transparent 70%);
   border: 2px solid rgba(139,92,246,.25);
@@ -381,7 +392,7 @@ body {
 }
 .number-big {
   font-family: 'Orbitron', monospace;
-  font-size: 68px; font-weight: 900; line-height: 1;
+  font-size: 52px; font-weight: 900; line-height: 1;
   background: linear-gradient(135deg, var(--purple), var(--cyan) 60%, var(--pink));
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
   filter: drop-shadow(0 0 20px rgba(139,92,246,.5));
@@ -394,20 +405,20 @@ body {
 }
 
 .prev-strip {
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  flex-wrap: wrap; margin: 8px 0 4px; min-height: 30px;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  flex-wrap: wrap; margin: 4px 0 2px; min-height: 24px;
 }
 .prev-num {
-  width: 30px; height: 30px; border-radius: 50%;
+  width: 24px; height: 24px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 700;
+  font-size: 10px; font-weight: 700;
   border: 2px solid var(--green);
   color: var(--green);
   background: rgba(16,185,129,.12);
   opacity: .7;
 }
 
-.progress-wrap { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.progress-wrap { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
 .progress-track {
   flex: 1; height: 5px; border-radius: 100px;
   background: rgba(255,255,255,.06);
@@ -432,12 +443,12 @@ body {
   font-size: 12px; font-weight: 700; color: var(--purple);
 }
 .number-board {
-  display: grid; gap: 3px;
+  display: grid; gap: 2px;
   grid-template-columns: repeat(9, 1fr);
 }
 .board-cell {
   aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 600; border-radius: 5px;
+  font-size: 10px; font-weight: 600; border-radius: 4px;
   background: var(--surf-1); border: 1px solid var(--bdr);
   color: var(--t3); transition: all .3s var(--ease); cursor: default;
 }
@@ -492,6 +503,7 @@ body {
   transition: all var(--dur) var(--ease);
 }
 .player-card:hover { background: var(--surf-2); border-color: var(--bdr-hi); }
+.player-card.is-me { border-color: rgba(6,182,212,.3); background: rgba(6,182,212,.06); }
 .player-avatar {
   width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
   background: linear-gradient(135deg, var(--purple), var(--cyan));
@@ -500,7 +512,9 @@ body {
 }
 .player-info { flex: 1; min-width: 0; }
 .player-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.you-badge { color: var(--cyan); font-size: 10px; font-weight: 600; }
 .player-wins { font-size: 10px; color: var(--amber); margin-top: 1px; }
+.player-coins { font-size: 10px; color: var(--t3); margin-top: 1px; }
 .player-actions { display: flex; gap: 3px; flex-shrink: 0; }
 
 .prize-list { padding: 6px; display: flex; flex-direction: column; gap: 5px; }
@@ -521,6 +535,24 @@ body {
 .hist-game { font-size: 12px; font-weight: 700; color: var(--purple); margin-bottom: 3px; }
 .hist-prize { font-size: 11px; color: var(--t2); margin-top: 2px; }
 .hist-prize strong { color: var(--t1); }
+
+/* ============================================================
+   MINI SCOREBOARD (right sidebar, always visible)
+   ============================================================ */
+.mini-scoreboard { padding: 6px; display: flex; flex-direction: column; gap: 3px; }
+.sb-mini-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 8px; border-radius: var(--r);
+  background: var(--surf-1); border: 1px solid var(--bdr);
+  font-size: 11px; transition: all var(--dur) var(--ease);
+}
+.sb-mini-row.is-me { border-color: rgba(139,92,246,.3); background: rgba(139,92,246,.08); }
+.sb-mini-rank { font-weight: 700; color: var(--purple); min-width: 22px; font-size: 11px; }
+.sb-mini-name { flex: 1; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-mini-wins { color: var(--amber); font-weight: 600; min-width: 20px; text-align: right; }
+.sb-mini-coins { font-weight: 700; min-width: 28px; text-align: right; }
+.sb-mini-coins.pos { color: var(--green); }
+.sb-mini-coins.neg { color: var(--red); }
 
 /* ============================================================
    BUTTONS
@@ -815,13 +847,13 @@ body {
 /* Mobile landscape / small tablet (≤768px) */
 @media (max-width: 768px) {
   :root {
-    --topbar-h: 52px;
+    --topbar-h: 46px;
     --sidebar-l: 0px;
     --sidebar-r: 0px;
   }
 
   .topbar {
-    flex-wrap: wrap; height: auto; padding: 8px 10px; gap: 6px;
+    flex-wrap: wrap; height: auto; padding: 6px 8px; gap: 5px;
     min-height: var(--topbar-h);
   }
   .topbar-brand { display: none; }
@@ -834,9 +866,17 @@ body {
   .ctrl-label { font-size: 10px; }
   .vdiv { display: none; }
   .draw-group { width: 100%; justify-content: center; }
-  .topbar-right { order: 2; gap: 4px; }
-  .topbar-right .btn { padding: 5px 10px; font-size: 11px; }
-  .topbar-right .theme-toggle { width: 28px; height: 28px; font-size: 13px; }
+  .btn-draw { padding: 7px 16px; font-size: 13px; }
+  .topbar-right { order: 2; gap: 3px; }
+  .topbar-right .btn { padding: 4px 8px; font-size: 11px; }
+  .topbar-right .theme-toggle { width: 26px; height: 26px; font-size: 12px; }
+
+  .settings-panel {
+    position: fixed; top: auto; bottom: 0; left: 0; right: 0;
+    transform: none; border-radius: var(--r-lg) var(--r-lg) 0 0;
+    max-height: 50vh; overflow-y: auto;
+  }
+  .settings-row { flex-direction: column; gap: 8px; }
 
   /* Game layout: single column */
   .app-layout {
@@ -849,27 +889,27 @@ body {
     height: 45vh; z-index: 100;
     border-left: none; border-top: 1px solid var(--bdr);
     border-radius: var(--r-xl) var(--r-xl) 0 0;
-    transform: translateY(calc(100% - 40px));
+    transform: translateY(calc(100% - 36px));
     transition: transform .3s var(--ease);
   }
   .sidebar-right.open { transform: translateY(0); }
   .sidebar-right::before {
-    content: '▲ Players & Prizes';
-    display: block; text-align: center; padding: 8px;
-    font-size: 11px; font-weight: 600; color: var(--t3);
+    content: '▲ Players & Score';
+    display: block; text-align: center; padding: 6px;
+    font-size: 10px; font-weight: 600; color: var(--t3);
     text-transform: uppercase; letter-spacing: 1px;
     cursor: pointer;
   }
 
-  .main-area { padding: 8px; gap: 8px; }
-  .announce-card { padding: 12px 10px 10px; }
-  .number-ring { width: 110px; height: 110px; }
-  .number-big { font-size: 52px; }
-  .number-board { gap: 2px; }
-  .board-cell { font-size: 10px; border-radius: 4px; }
-  .board-lg .board-cell { font-size: 12px; }
+  .main-area { padding: 6px; gap: 4px; }
+  .announce-card { padding: 8px 8px 6px; }
+  .number-ring { width: 85px; height: 85px; }
+  .number-big { font-size: 40px; }
+  .number-board { gap: 1px; }
+  .board-cell { font-size: 9px; border-radius: 3px; }
+  .board-lg .board-cell { font-size: 10px; }
 
-  .prev-num { width: 26px; height: 26px; font-size: 10px; }
+  .prev-num { width: 22px; height: 22px; font-size: 9px; }
 
   /* Forms */
   .form-card, .lobby-card, .scoreboard-card {
@@ -892,9 +932,9 @@ body {
 @media (max-width: 480px) {
   html { font-size: 13px; }
 
-  .number-ring { width: 90px; height: 90px; }
-  .number-big { font-size: 42px; }
-  .board-cell { font-size: 9px; aspect-ratio: auto; padding: 5px 2px; }
+  .number-ring { width: 70px; height: 70px; }
+  .number-big { font-size: 34px; }
+  .board-cell { font-size: 8px; aspect-ratio: auto; padding: 4px 2px; }
 
   .landing-emoji { font-size: 36px; }
   .landing-title { font-size: 28px; letter-spacing: 2px; }

@@ -333,6 +333,10 @@ function showScreen(name) {
   const gc = qs('#topbar-game-controls');
   if (gc) gc.style.display = name === 'game' ? '' : 'none';
 
+  // Show/hide settings panel only in game
+  const sp = qs('#settings-panel');
+  if (sp && name !== 'game') sp.classList.add('hidden');
+
   const newRoundBtn = qs('#btn-new-round');
   if (newRoundBtn) newRoundBtn.classList.toggle('hidden', name !== 'game');
 
@@ -856,16 +860,17 @@ function renderPlayers() {
     const curRound = S.rounds.find(rn => rn.roundNo === S.currentRound);
     const wins = curRound ? curRound.prizes.filter(pr => pr.winnerId === p.id).map(pr => pr.icon).join(' ') : '';
     const score = S.scoreboard[p.id];
+    const isMe = p.id === S.myPlayerId;
     return `
-      <div class="player-card" id="pc-${p.id}">
+      <div class="player-card ${isMe ? 'is-me' : ''}" id="pc-${p.id}">
         <div class="player-avatar">${p.name[0].toUpperCase()}</div>
         <div class="player-info">
-          <div class="player-name">${esc(p.name)} ${p.id === S.myPlayerId ? '<span style="color:var(--cyan);font-size:10px">(You)</span>' : ''}</div>
+          <div class="player-name">${esc(p.name)} ${isMe ? '<span class="you-badge">(You)</span>' : ''}</div>
           ${wins ? `<div class="player-wins">${wins} This Round</div>` : ''}
-          ${score ? `<div style="font-size:10px;color:var(--t3)">💰 ${score.coinsWon - score.coinsPaid} net coins</div>` : ''}
+          ${score ? `<div class="player-coins">💰 ${score.coinsWon - score.coinsPaid >= 0 ? '+' : ''}${score.coinsWon - score.coinsPaid}</div>` : ''}
         </div>
         <div class="player-actions">
-          ${p.ticket ? `<button class="btn btn-xs btn-outline" onclick="showTicket('${p.id}')">🎫</button>` : ''}
+          ${isMe && p.ticket ? `<button class="btn btn-xs btn-outline" onclick="showTicket('${p.id}')" title="View your ticket">🎫</button>` : ''}
         </div>
       </div>`;
   }).join('');
@@ -1054,10 +1059,37 @@ function renderAll() {
   renderRoundList();
   renderPlayers();
   renderPrizes();
-  renderHistory();
+  renderMiniScoreboard();
   updateStats();
   renderPrevStrip();
   updateCurrentNumber();
+}
+
+// =====================================================
+// MINI SCOREBOARD (always visible in right sidebar)
+// =====================================================
+
+function renderMiniScoreboard() {
+  const el = qs('#mini-scoreboard');
+  if (!el) return;
+  const r = S.room;
+  if (!r) return;
+
+  const sorted = S.players.map(p => {
+    const sc = S.scoreboard[p.id] || { name: p.name, gamesWon: 0, coinsWon: 0, coinsPaid: r.entryFee };
+    return { id: p.id, name: p.name, gamesWon: sc.gamesWon, coinsWon: sc.coinsWon, coinsPaid: sc.coinsPaid, net: (sc.coinsWon || 0) - (sc.coinsPaid || r.entryFee), isMe: p.id === S.myPlayerId };
+  }).sort((a, b) => b.gamesWon - a.gamesWon || b.net - a.net);
+
+  el.innerHTML = sorted.map((p, i) => {
+    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`;
+    return `
+      <div class="sb-mini-row ${p.isMe ? 'is-me' : ''}">
+        <span class="sb-mini-rank">${medal}</span>
+        <span class="sb-mini-name">${esc(p.name)}</span>
+        <span class="sb-mini-wins">${p.gamesWon}W</span>
+        <span class="sb-mini-coins ${p.net >= 0 ? 'pos' : 'neg'}">${p.net >= 0 ? '+' : ''}${p.net}</span>
+      </div>`;
+  }).join('');
 }
 
 // =====================================================
@@ -1115,6 +1147,19 @@ document.addEventListener('DOMContentLoaded', () => {
     toast('Voice updated');
   });
 
+  // ── Pool custom toggle ──
+  qs('#cr-pool')?.addEventListener('change', e => {
+    qs('#cr-custom-pool').classList.toggle('hidden', e.target.value !== 'custom');
+  });
+
+  // ── Settings panel toggle ──
+  qs('#btn-settings-toggle')?.addEventListener('click', () => {
+    qs('#settings-panel')?.classList.toggle('hidden');
+  });
+
+  // ── Full scoreboard button ──
+  qs('#btn-sb-full')?.addEventListener('click', showScoreboard);
+
   // ── Mid-game share button ──
   qs('#btn-share-game')?.addEventListener('click', () => {
     if (!S.room) return;
@@ -1146,7 +1191,7 @@ document.addEventListener('DOMContentLoaded', () => {
   qs('#btn-do-create').addEventListener('click', () => {
     const hostName = qs('#cr-host-name').value.trim();
     const roomName = qs('#cr-room-name').value.trim() || `Housie Room`;
-    const poolV = qs('input[name="crpool"]:checked')?.value || '90';
+    const poolV = qs('#cr-pool').value || '90';
     const pool = poolV === 'custom'
       ? Math.max(10, parseInt(qs('#cr-custom-pool').value, 10) || 90)
       : parseInt(poolV, 10);
@@ -1251,8 +1296,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
     if (e.code === 'Space' && S.screen === 'game') { e.preventDefault(); drawNumber(); }
     if ((e.key === 'a' || e.key === 'A') && S.screen === 'game') toggleAuto();
+    if ((e.key === 'r' || e.key === 'R') && S.screen === 'game') {
+      if (confirm('Reset this round? All drawn numbers will be cleared.')) resetRound();
+    }
     if (e.key === 'Escape') {
       qsa('.modal-overlay:not(.hidden)').forEach(m => m.classList.add('hidden'));
+      qs('#settings-panel')?.classList.add('hidden');
       stopAuto();
     }
   });

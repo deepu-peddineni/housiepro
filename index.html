@@ -33,56 +33,47 @@
     </div>
 
     <nav class="topbar-controls" aria-label="Game controls" id="topbar-game-controls">
+      <div class="ctrl-group draw-group">
+        <button id="btn-draw" class="btn btn-primary btn-draw" title="Draw next number [Space]">🎱 Draw</button>
+        <button id="btn-auto" class="btn btn-cyan" title="Toggle auto-draw [A]">▶ Auto</button>
+      </div>
+
+      <span class="vdiv"></span>
+
       <div class="ctrl-group">
+        <button id="btn-settings-toggle" class="btn btn-ghost btn-settings" title="Game Settings">⚙ Settings</button>
+      </div>
+    </nav>
+
+    <!-- Settings dropdown panel -->
+    <div class="settings-panel hidden" id="settings-panel">
+      <div class="settings-row">
         <label class="ctrl-label" for="pool-preset">Pool</label>
         <select id="pool-preset" class="select">
-          <option value="90">1 – 90 (Classic)</option>
+          <option value="90">1 – 90</option>
           <option value="100">1 – 100</option>
           <option value="75">1 – 75</option>
           <option value="50">1 – 50</option>
         </select>
-      </div>
-
-      <span class="vdiv"></span>
-
-      <div class="ctrl-group">
-        <label class="ctrl-label" for="auto-speed" title="Auto-draw interval">Interval</label>
+        <label class="ctrl-label" for="auto-speed">Interval</label>
         <select id="auto-speed" class="select">
-          <option value="8000">8 s</option>
-          <option value="5000">5 s</option>
-          <option value="3000" selected>3 s</option>
-          <option value="2000">2 s</option>
-          <option value="1000">1 s</option>
+          <option value="8000">8s</option>
+          <option value="5000">5s</option>
+          <option value="3000" selected>3s</option>
+          <option value="2000">2s</option>
+          <option value="1000">1s</option>
         </select>
+        <label class="ctrl-label" for="voice-select">Voice</label>
+        <select id="voice-select" class="select" style="max-width:130px"></select>
       </div>
-
-      <span class="vdiv"></span>
-
-      <div class="ctrl-group">
-        <label class="ctrl-label" for="voice-select" title="TTS Voice">Voice</label>
-        <select id="voice-select" class="select" style="max-width:140px"></select>
-      </div>
-
-      <span class="vdiv"></span>
-
-      <div class="ctrl-group draw-group">
-        <button id="btn-draw" class="btn btn-primary" title="Draw next number [Space]">
-          🎱&nbsp; Draw
-        </button>
-        <button id="btn-auto" class="btn btn-cyan" title="Toggle auto-draw [A]">
-          ▶&nbsp; Auto
-        </button>
-        <button id="btn-reset" class="btn btn-danger" title="Reset current game">
-          ↺&nbsp; Reset
-        </button>
-      </div>
-    </nav>
+    </div>
 
     <div class="topbar-right">
-      <button id="btn-share-game" class="btn btn-outline" title="Copy invite link">🔗 Invite</button>
+      <button id="btn-share-game" class="btn btn-outline" title="Copy invite link">🔗</button>
+      <button id="btn-scoreboard" class="btn btn-outline" title="Scoreboard">🏆</button>
+      <button id="btn-new-round" class="btn btn-primary hidden">＋ Round</button>
       <button id="btn-theme" class="theme-toggle" title="Toggle theme" aria-label="Toggle theme">🌙</button>
-      <button id="btn-scoreboard" class="btn btn-outline">🏆 Scoreboard</button>
-      <button id="btn-new-round" class="btn btn-primary hidden">＋ New Round</button>
+      <button id="btn-reset" class="btn btn-danger btn-sm" title="Reset round [R]">↺</button>
     </div>
   </header>
 
@@ -130,16 +121,15 @@
       </div>
 
       <div class="field">
-        <label class="field-label">Number Pool</label>
-        <div class="radio-group">
-          <label class="radio-opt"><input type="radio" name="crpool" value="90" checked> 1 – 90 (Classic)</label>
-          <label class="radio-opt"><input type="radio" name="crpool" value="100"> 1 – 100</label>
-          <label class="radio-opt"><input type="radio" name="crpool" value="75"> 1 – 75</label>
-          <label class="radio-opt"><input type="radio" name="crpool" value="50"> 1 – 50</label>
-          <label class="radio-opt"><input type="radio" name="crpool" value="custom"> Custom:
-            <input type="number" id="cr-custom-pool" class="input-sm" min="10" max="999" value="90" style="width:70px">
-          </label>
-        </div>
+        <label class="field-label" for="cr-pool">Number Pool</label>
+        <select id="cr-pool" class="select" style="width:100%">
+          <option value="90">1 – 90 (Classic Tambola)</option>
+          <option value="100">1 – 100</option>
+          <option value="75">1 – 75</option>
+          <option value="50">1 – 50</option>
+          <option value="custom">Custom…</option>
+        </select>
+        <input type="number" id="cr-custom-pool" class="field-input hidden" min="10" max="999" value="90" placeholder="Enter pool size (10–999)" style="margin-top:6px">
       </div>
 
       <div class="field">
@@ -273,7 +263,7 @@
         </section>
       </main>
 
-      <!-- RIGHT: Players / Prizes -->
+      <!-- RIGHT: Players / Prizes / Scoreboard -->
       <aside class="sidebar-right">
         <section class="right-section">
           <div class="section-head">
@@ -290,8 +280,11 @@
         </section>
 
         <section class="right-section">
-          <div class="section-head"><span>Round Results</span></div>
-          <div id="game-history" class="game-history"></div>
+          <div class="section-head">
+            <span>🏆 Scoreboard</span>
+            <button class="btn btn-xs btn-outline" id="btn-sb-full" title="View full scoreboard">Full</button>
+          </div>
+          <div id="mini-scoreboard" class="mini-scoreboard"></div>
         </section>
       </aside>
     </div>
