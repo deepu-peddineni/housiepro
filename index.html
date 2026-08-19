@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark light">
+  <title>HousiePro – Professional Tambola Game Manager</title>
+  <meta name="description" content="Professional Housie/Tambola game manager with multi-game sessions, player tracking, voice announcements, and auto-generated tickets.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Ambient background orbs -->
+  <div class="ambient" aria-hidden="true">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+
+  <!-- ===== TOP BAR ===== -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="brand-emoji">🎱</span>
+      <span class="brand-wordmark">Housie<em>Pro</em></span>
+    </div>
+
+    <nav class="topbar-controls" aria-label="Game controls">
+      <div class="ctrl-group">
+        <label class="ctrl-label" for="pool-preset">Pool</label>
+        <select id="pool-preset" class="select">
+          <option value="90">1 – 90 (Classic)</option>
+          <option value="100">1 – 100</option>
+          <option value="75">1 – 75</option>
+          <option value="50">1 – 50</option>
+          <option value="custom">Custom…</option>
+        </select>
+        <input type="number" id="custom-max" class="input-sm hidden" min="10" max="999" value="90" placeholder="Max #">
+      </div>
+
+      <span class="vdiv"></span>
+
+      <div class="ctrl-group">
+        <label class="ctrl-label" for="auto-speed">Speed</label>
+        <select id="auto-speed" class="select">
+          <option value="8000">8 s</option>
+          <option value="5000">5 s</option>
+          <option value="3000" selected>3 s</option>
+          <option value="2000">2 s</option>
+          <option value="1000">1 s</option>
+        </select>
+      </div>
+
+      <span class="vdiv"></span>
+
+      <div class="ctrl-group draw-group">
+        <button id="btn-draw" class="btn btn-primary" title="Draw next number  [Space]">
+          🎱&nbsp; Draw
+        </button>
+        <button id="btn-auto" class="btn btn-cyan" title="Toggle auto-draw  [A]">
+          ▶&nbsp; Auto
+        </button>
+        <button id="btn-reset" class="btn btn-danger" title="Reset current game">
+          ↺&nbsp; Reset
+        </button>
+      </div>
+    </nav>
+
+    <div class="topbar-right">
+      <button id="btn-theme" class="theme-toggle" title="Toggle light/dark theme" aria-label="Toggle theme">🌙</button>
+      <button id="btn-new-game" class="btn btn-outline">＋ New Game</button>
+    </div>
+  </header>
+
+  <!-- ===== APP LAYOUT ===== -->
+  <div class="app-layout">
+
+    <!-- LEFT: Session list -->
+    <aside class="sidebar-left" aria-label="Game sessions">
+      <div class="sidebar-heading">
+        <span>Sessions</span>
+        <span class="badge" id="session-count">0</span>
+      </div>
+      <div id="game-list" class="game-list">
+        <p class="hint-text">No games yet.<br>Click <strong>New Game</strong> to start.</p>
+      </div>
+    </aside>
+
+    <!-- CENTER: Announcement + Board -->
+    <main class="main-area">
+
+      <!-- Announcement card -->
+      <section class="announce-card" id="announce-card">
+        <div class="game-label" id="game-label">— select or create a game —</div>
+
+        <div class="number-stage">
+          <div class="number-ring" id="number-ring">
+            <span class="number-big" id="num-display">–</span>
+          </div>
+        </div>
+
+        <div class="prev-strip" id="prev-strip" aria-label="Previously called numbers"></div>
+
+        <div class="progress-wrap">
+          <div class="progress-track">
+            <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+          </div>
+          <span class="progress-text" id="progress-text">0 / 90 drawn</span>
+        </div>
+      </section>
+
+      <!-- Number board -->
+      <section class="board-section">
+        <div class="board-meta">
+          <span id="stat-called">Called: 0</span>
+          <span id="stat-remain">Remaining: 90</span>
+          <span id="stat-pct" class="pct-badge">0%</span>
+        </div>
+        <div id="number-board" class="number-board" role="grid" aria-label="Number board"></div>
+      </section>
+
+    </main>
+
+    <!-- RIGHT: Players / Prizes / History -->
+    <aside class="sidebar-right" aria-label="Game details">
+
+      <section class="right-section">
+        <div class="section-head">
+          <span>Players</span>
+          <button id="btn-add-player" class="btn btn-xs btn-outline">＋ Add</button>
+        </div>
+        <div id="player-list" class="player-list">
+          <p class="hint-text">Select a game first</p>
+        </div>
+      </section>
+
+      <section class="right-section">
+        <div class="section-head"><span>Prizes</span></div>
+        <div id="prize-list" class="prize-list">
+          <p class="hint-text">Select a game first</p>
+        </div>
+      </section>
+
+      <section class="right-section">
+        <div class="section-head"><span>History</span></div>
+        <div id="game-history" class="game-history">
+          <p class="hint-text">No results yet</p>
+        </div>
+      </section>
+
+    </aside>
+  </div>
+
+  <!-- ===== MODALS ===== -->
+
+  <!-- New Game -->
+  <div id="modal-game" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-game-title">
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="modal-game-title">New Game Session</h2>
+        <button class="modal-x" data-close="modal-game" aria-label="Close">✕</button>
+      </div>
+      <div class="field">
+        <label class="field-label" for="new-game-name">Game Name</label>
+        <input type="text" id="new-game-name" class="field-input" placeholder="e.g. Saturday Night Housie">
+      </div>
+      <div class="field">
+        <label class="field-label">Number Pool</label>
+        <div class="radio-group">
+          <label class="radio-opt"><input type="radio" name="gpool" value="90" checked> 1 – 90</label>
+          <label class="radio-opt"><input type="radio" name="gpool" value="100"> 1 – 100</label>
+          <label class="radio-opt"><input type="radio" name="gpool" value="75"> 1 – 75</label>
+          <label class="radio-opt"><input type="radio" name="gpool" value="custom"> Custom:
+            <input type="number" id="game-custom-max" class="input-sm" min="10" max="999" value="90">
+          </label>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button id="btn-create-game" class="btn btn-primary">Create Game</button>
+        <button class="btn btn-ghost" data-close="modal-game">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Player -->
+  <div id="modal-player" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-player-title">
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="modal-player-title">Add Player</h2>
+        <button class="modal-x" data-close="modal-player" aria-label="Close">✕</button>
+      </div>
+      <div class="field">
+        <label class="field-label" for="new-player-name">Player Name</label>
+        <input type="text" id="new-player-name" class="field-input" placeholder="Enter player name">
+      </div>
+      <label class="check-label">
+        <input type="checkbox" id="gen-ticket" checked>
+        <span>Generate Tambola ticket (3×9 grid)</span>
+      </label>
+      <div class="modal-foot">
+        <button id="btn-create-player" class="btn btn-primary">Add Player</button>
+        <button class="btn btn-ghost" data-close="modal-player">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ticket View -->
+  <div id="modal-ticket" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="ticket-title">
+    <div class="modal modal-wide">
+      <div class="modal-head">
+        <h2 id="ticket-title">Ticket</h2>
+        <button class="modal-x" data-close="modal-ticket" aria-label="Close">✕</button>
+      </div>
+      <div id="ticket-display" class="ticket-display"></div>
+      <div class="ticket-legend">
+        <span class="leg-item"><span class="leg-dot dot-marked"></span> Called &amp; on ticket</span>
+        <span class="leg-item"><span class="leg-dot dot-normal"></span> Not yet called</span>
+        <span class="leg-item"><span class="leg-dot dot-blank"></span> Blank</span>
+      </div>
+      <div class="modal-foot">
+        <button id="btn-print-ticket" class="btn btn-secondary">🖨 Print</button>
+        <button class="btn btn-ghost" data-close="modal-ticket">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Winner -->
+  <div id="modal-winner" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="winner-title">
+    <div class="modal modal-winner">
+      <div class="winner-burst" id="winner-burst">🎉</div>
+      <h2 id="winner-title">Winner!</h2>
+      <div id="winner-info" class="winner-info"></div>
+      <div class="modal-foot" style="justify-content:center;margin-top:24px">
+        <button id="btn-close-winner" class="btn btn-primary">🎊 Continue Game</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
