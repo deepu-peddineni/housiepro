@@ -137,6 +137,16 @@ function load() {
   }
 }
 
+function clearSession() {
+  stopAuto();
+  if (S.channel) { S.channel.close(); S.channel = null; }
+  const keys = ['hp-room','hp-players','hp-myid','hp-rounds','hp-scoreboard','hp-currentRound','hp-drawn'];
+  keys.forEach(k => localStorage.removeItem(k));
+  S.room = null; S.players = []; S.myPlayerId = null;
+  S.currentRound = 0; S.rounds = []; S.drawn = []; S.scoreboard = {};
+  showScreen('landing');
+}
+
 // =====================================================
 // AUDIO ENGINE
 // =====================================================
@@ -626,6 +636,16 @@ function animateNumber(num) {
   el.classList.add('pop', 'calling');
   ring?.classList.add('calling');
 
+  // Dramatic reveal: flash effect on ring
+  if (ring) {
+    ring.style.transition = 'none';
+    ring.style.boxShadow = '0 0 60px rgba(239,68,68,.6), inset 0 0 40px rgba(239,68,68,.15)';
+    setTimeout(() => {
+      ring.style.transition = 'box-shadow .6s ease';
+      ring.style.boxShadow = '';
+    }, 300);
+  }
+
   // After ~2 seconds, switch from red (calling) to green (called)
   setTimeout(() => {
     el.classList.remove('calling');
@@ -801,9 +821,9 @@ function renderBoard() {
   const drawn = new Set(S.drawn);
   const board = qs('#number-board');
 
-  // Always 10 columns: 1-10, 11-20, etc.
-  board.style.gridTemplateColumns = 'repeat(10, 1fr)';
-  board.classList.toggle('board-lg', max <= 50);
+  // Calculate optimal columns: prefer 10 for ≤100, 8 for larger
+  const cols = max <= 100 ? 10 : 8;
+  board.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
 
   board.innerHTML = '';
   for (let n = 1; n <= max; n++) {
@@ -815,6 +835,12 @@ function renderBoard() {
       cell.classList.add('called');
     }
     board.appendChild(cell);
+  }
+
+  // Sync pool preset dropdown with room value
+  const preset = qs('#pool-preset');
+  if (preset && S.room) {
+    preset.value = S.room.poolMax;
   }
 }
 
@@ -852,8 +878,8 @@ function updateStats() {
 // =====================================================
 
 function renderPrevStrip() {
-  const last5 = S.drawn.slice(-6, -1).reverse();
-  qs('#prev-strip').innerHTML = last5.map(n => {
+  const last10 = S.drawn.slice(-11, -1).reverse();
+  qs('#prev-strip').innerHTML = last10.map(n => {
     return `<span class="prev-num">${n}</span>`;
   }).join('');
 }
@@ -1338,6 +1364,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (confirm('Reset this round? All drawn numbers will be cleared.')) resetRound();
   });
   qs('#btn-new-round').addEventListener('click', nextRound);
+  qs('#btn-home').addEventListener('click', () => {
+    if (confirm('Leave this game and go back to home? Your current game session will be cleared.')) {
+      clearSession();
+    }
+  });
 
   qs('#btn-scoreboard').addEventListener('click', showScoreboard);
 
@@ -1353,6 +1384,7 @@ document.addEventListener('DOMContentLoaded', () => {
   qs('#pool-preset')?.addEventListener('change', e => {
     if (S.room) {
       S.room.poolMax = parseInt(e.target.value, 10);
+      S.pool = buildPool(S.room.poolMax, S.drawn);
       save();
       renderAll();
     }
