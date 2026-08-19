@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark light">
   <title>HousiePro – Professional Tambola Game Manager</title>
-  <meta name="description" content="Professional Housie/Tambola game manager with multi-game sessions, player tracking, voice announcements, and auto-generated tickets.">
+  <meta name="description" content="Professional Housie/Tambola game manager with rooms, multiplayer, voice announcements, and scoreboards.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
@@ -13,21 +13,26 @@
 </head>
 <body>
 
-  <!-- Ambient background orbs -->
+  <!-- Ambient background -->
   <div class="ambient" aria-hidden="true">
     <div class="orb orb-1"></div>
     <div class="orb orb-2"></div>
     <div class="orb orb-3"></div>
   </div>
 
-  <!-- ===== TOP BAR ===== -->
-  <header class="topbar">
+  <!-- ===== TOP BAR (shared across game/lobby) ===== -->
+  <header class="topbar hidden" id="topbar">
     <div class="topbar-brand">
       <span class="brand-emoji">🎱</span>
       <span class="brand-wordmark">Housie<em>Pro</em></span>
     </div>
 
-    <nav class="topbar-controls" aria-label="Game controls">
+    <div class="topbar-room-info" id="topbar-room-info">
+      <span class="room-badge" id="tb-room-name"></span>
+      <span class="room-code-badge" id="tb-room-code" title="Click to copy invite link"></span>
+    </div>
+
+    <nav class="topbar-controls" aria-label="Game controls" id="topbar-game-controls">
       <div class="ctrl-group">
         <label class="ctrl-label" for="pool-preset">Pool</label>
         <select id="pool-preset" class="select">
@@ -35,9 +40,7 @@
           <option value="100">1 – 100</option>
           <option value="75">1 – 75</option>
           <option value="50">1 – 50</option>
-          <option value="custom">Custom…</option>
         </select>
-        <input type="number" id="custom-max" class="input-sm hidden" min="10" max="999" value="90" placeholder="Max #">
       </div>
 
       <span class="vdiv"></span>
@@ -56,10 +59,10 @@
       <span class="vdiv"></span>
 
       <div class="ctrl-group draw-group">
-        <button id="btn-draw" class="btn btn-primary" title="Draw next number  [Space]">
+        <button id="btn-draw" class="btn btn-primary" title="Draw next number [Space]">
           🎱&nbsp; Draw
         </button>
-        <button id="btn-auto" class="btn btn-cyan" title="Toggle auto-draw  [A]">
+        <button id="btn-auto" class="btn btn-cyan" title="Toggle auto-draw [A]">
           ▶&nbsp; Auto
         </button>
         <button id="btn-reset" class="btn btn-danger" title="Reset current game">
@@ -69,127 +72,263 @@
     </nav>
 
     <div class="topbar-right">
-      <button id="btn-theme" class="theme-toggle" title="Toggle light/dark theme" aria-label="Toggle theme">🌙</button>
-      <button id="btn-new-game" class="btn btn-outline">＋ New Game</button>
+      <button id="btn-theme" class="theme-toggle" title="Toggle theme" aria-label="Toggle theme">🌙</button>
+      <button id="btn-scoreboard" class="btn btn-outline">🏆 Scoreboard</button>
+      <button id="btn-new-round" class="btn btn-primary hidden">＋ New Round</button>
     </div>
   </header>
 
-  <!-- ===== APP LAYOUT ===== -->
-  <div class="app-layout">
-
-    <!-- LEFT: Session list -->
-    <aside class="sidebar-left" aria-label="Game sessions">
-      <div class="sidebar-heading">
-        <span>Sessions</span>
-        <span class="badge" id="session-count">0</span>
+  <!-- ===== SCREEN: LANDING ===== -->
+  <div id="screen-landing" class="screen">
+    <div class="landing-hero">
+      <div class="landing-logo">
+        <span class="landing-emoji">🎱</span>
+        <h1 class="landing-title">Housie<em>Pro</em></h1>
       </div>
-      <div id="game-list" class="game-list">
-        <p class="hint-text">No games yet.<br>Click <strong>New Game</strong> to start.</p>
+      <p class="landing-sub">Professional Tambola Game Manager</p>
+
+      <div class="landing-actions">
+        <button id="btn-create-room" class="btn btn-primary btn-lg">
+          ＋ Create Room
+        </button>
+        <button id="btn-join-room" class="btn btn-cyan btn-lg">
+          🔗 Join Room
+        </button>
       </div>
-    </aside>
 
-    <!-- CENTER: Announcement + Board -->
-    <main class="main-area">
+      <div class="landing-footer">
+        <button id="btn-theme-landing" class="theme-toggle" title="Toggle theme">🌙</button>
+        <span class="landing-version">v2.0</span>
+      </div>
+    </div>
+  </div>
 
-      <!-- Announcement card -->
-      <section class="announce-card" id="announce-card">
-        <div class="game-label" id="game-label">— select or create a game —</div>
+  <!-- ===== SCREEN: CREATE ROOM ===== -->
+  <div id="screen-create" class="screen hidden">
+    <div class="form-card">
+      <div class="form-head">
+        <button class="btn-back" id="btn-back-create">←</button>
+        <h2>Create Room</h2>
+      </div>
 
-        <div class="number-stage">
-          <div class="number-ring" id="number-ring">
-            <span class="number-big" id="num-display">–</span>
-          </div>
+      <div class="field">
+        <label class="field-label" for="cr-host-name">Your Name (Host)</label>
+        <input type="text" id="cr-host-name" class="field-input" placeholder="Enter your name" maxlength="20">
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="cr-room-name">Room Name</label>
+        <input type="text" id="cr-room-name" class="field-input" placeholder="e.g. Saturday Night Housie" maxlength="30">
+      </div>
+
+      <div class="field">
+        <label class="field-label">Number Pool</label>
+        <div class="radio-group">
+          <label class="radio-opt"><input type="radio" name="crpool" value="90" checked> 1 – 90 (Classic)</label>
+          <label class="radio-opt"><input type="radio" name="crpool" value="100"> 1 – 100</label>
+          <label class="radio-opt"><input type="radio" name="crpool" value="75"> 1 – 75</label>
+          <label class="radio-opt"><input type="radio" name="crpool" value="50"> 1 – 50</label>
         </div>
+      </div>
 
-        <div class="prev-strip" id="prev-strip" aria-label="Previously called numbers"></div>
+      <div class="field">
+        <label class="field-label">Prizes</label>
+        <div id="cr-prizes" class="prize-select-grid"></div>
+      </div>
 
-        <div class="progress-wrap">
-          <div class="progress-track">
-            <div class="progress-fill" id="progress-fill" style="width:0%"></div>
-          </div>
-          <span class="progress-text" id="progress-text">0 / 90 drawn</span>
+      <div class="field-row">
+        <div class="field" style="flex:1">
+          <label class="field-label" for="cr-best-of">Best Of</label>
+          <select id="cr-best-of" class="select" style="width:100%">
+            <option value="1">1 game</option>
+            <option value="3">3 games</option>
+            <option value="5" selected>5 games</option>
+            <option value="7">7 games</option>
+            <option value="10">10 games</option>
+          </select>
         </div>
-      </section>
-
-      <!-- Number board -->
-      <section class="board-section">
-        <div class="board-meta">
-          <span id="stat-called">Called: 0</span>
-          <span id="stat-remain">Remaining: 90</span>
-          <span id="stat-pct" class="pct-badge">0%</span>
+        <div class="field" style="flex:1">
+          <label class="field-label" for="cr-entry-fee">Entry Fee (coins)</label>
+          <input type="number" id="cr-entry-fee" class="field-input" min="0" max="100" value="1">
         </div>
-        <div id="number-board" class="number-board" role="grid" aria-label="Number board"></div>
-      </section>
+      </div>
 
-    </main>
+      <div class="modal-foot">
+        <button id="btn-do-create" class="btn btn-primary">Create Room</button>
+        <button class="btn btn-ghost" id="btn-cancel-create">Cancel</button>
+      </div>
+    </div>
+  </div>
 
-    <!-- RIGHT: Players / Prizes / History -->
-    <aside class="sidebar-right" aria-label="Game details">
+  <!-- ===== SCREEN: JOIN ROOM ===== -->
+  <div id="screen-join" class="screen hidden">
+    <div class="form-card">
+      <div class="form-head">
+        <button class="btn-back" id="btn-back-join">←</button>
+        <h2>Join Room</h2>
+      </div>
 
-      <section class="right-section">
+      <div class="field">
+        <label class="field-label" for="jn-code">Room Code</label>
+        <input type="text" id="jn-code" class="field-input code-input" placeholder="XXXXXX" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="jn-name">Your Name</label>
+        <input type="text" id="jn-name" class="field-input" placeholder="Enter your name" maxlength="20">
+      </div>
+
+      <div class="modal-foot">
+        <button id="btn-do-join" class="btn btn-cyan">Join Room</button>
+        <button class="btn btn-ghost" id="btn-cancel-join">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SCREEN: LOBBY ===== -->
+  <div id="screen-lobby" class="screen hidden">
+    <div class="lobby-card">
+      <div class="lobby-header">
+        <span class="lobby-emoji">🎱</span>
+        <h2 id="lb-room-name">Room</h2>
+      </div>
+
+      <div class="lobby-invite">
+        <div class="invite-label">Share this code to invite players</div>
+        <div class="invite-code-display" id="lb-code-display">
+          <span class="invite-code-text" id="lb-code-text"></span>
+          <button class="btn btn-xs btn-outline" id="btn-copy-code" title="Copy code">📋</button>
+          <button class="btn btn-xs btn-outline" id="btn-copy-link" title="Copy invite link">🔗</button>
+        </div>
+        <div class="invite-or">— or share this link —</div>
+        <div class="invite-link-box" id="lb-link-box"></div>
+      </div>
+
+      <div class="lobby-section">
         <div class="section-head">
           <span>Players</span>
-          <button id="btn-add-player" class="btn btn-xs btn-outline">＋ Add</button>
+          <span class="badge" id="lb-player-count">0</span>
+          <button class="btn btn-xs btn-outline" id="btn-lobby-add-player">＋ Add</button>
         </div>
-        <div id="player-list" class="player-list">
-          <p class="hint-text">Select a game first</p>
-        </div>
-      </section>
+        <div id="lb-player-list" class="player-list-lobby"></div>
+      </div>
 
-      <section class="right-section">
-        <div class="section-head"><span>Prizes</span></div>
-        <div id="prize-list" class="prize-list">
-          <p class="hint-text">Select a game first</p>
-        </div>
-      </section>
+      <div class="lobby-meta">
+        <span id="lb-pool-info"></span>
+        <span id="lb-best-of"></span>
+        <span id="lb-entry-fee"></span>
+      </div>
 
-      <section class="right-section">
-        <div class="section-head"><span>History</span></div>
-        <div id="game-history" class="game-history">
-          <p class="hint-text">No results yet</p>
-        </div>
-      </section>
+      <div class="lobby-actions">
+        <button id="btn-start-game" class="btn btn-primary btn-lg" disabled>Start Game (need 1+ players)</button>
+      </div>
+    </div>
+  </div>
 
-    </aside>
+  <!-- ===== SCREEN: GAME ===== -->
+  <div id="screen-game" class="screen hidden">
+    <div class="app-layout">
+
+      <!-- LEFT: Game rounds -->
+      <aside class="sidebar-left">
+        <div class="sidebar-heading">
+          <span>Rounds</span>
+          <span class="badge" id="round-count">0</span>
+        </div>
+        <div id="round-list" class="game-list">
+          <p class="hint-text">No rounds yet</p>
+        </div>
+      </aside>
+
+      <!-- CENTER: Announcement + Board -->
+      <main class="main-area">
+        <section class="announce-card">
+          <div class="game-label" id="game-label">Round 1</div>
+          <div class="number-stage">
+            <div class="number-ring">
+              <span class="number-big" id="num-display">–</span>
+            </div>
+          </div>
+          <div class="prev-strip" id="prev-strip"></div>
+          <div class="progress-wrap">
+            <div class="progress-track">
+              <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+            </div>
+            <span class="progress-text" id="progress-text">0 / 90 drawn</span>
+          </div>
+        </section>
+
+        <section class="board-section">
+          <div class="board-meta">
+            <span id="stat-called">Called: 0</span>
+            <span id="stat-remain">Remaining: 90</span>
+            <span id="stat-pct" class="pct-badge">0%</span>
+          </div>
+          <div id="number-board" class="number-board" role="grid" aria-label="Number board"></div>
+        </section>
+      </main>
+
+      <!-- RIGHT: Players / Prizes -->
+      <aside class="sidebar-right">
+        <section class="right-section">
+          <div class="section-head">
+            <span>Players</span>
+            <span class="badge" id="game-player-count">0</span>
+            <button class="btn btn-xs btn-outline" id="btn-game-add-player">＋ Add</button>
+          </div>
+          <div id="player-list" class="player-list"></div>
+        </section>
+
+        <section class="right-section">
+          <div class="section-head"><span>Prizes</span></div>
+          <div id="prize-list" class="prize-list"></div>
+        </section>
+
+        <section class="right-section">
+          <div class="section-head"><span>Round Results</span></div>
+          <div id="game-history" class="game-history"></div>
+        </section>
+      </aside>
+    </div>
+  </div>
+
+  <!-- ===== SCREEN: SCOREBOARD ===== -->
+  <div id="screen-scoreboard" class="screen hidden">
+    <div class="scoreboard-card">
+      <div class="form-head">
+        <button class="btn-back" id="btn-back-score">←</button>
+        <h2>🏆 Scoreboard</h2>
+      </div>
+
+      <div class="sb-room-info" id="sb-room-info"></div>
+
+      <div class="sb-summary" id="sb-summary"></div>
+
+      <div class="sb-table-wrap">
+        <table class="sb-table" id="sb-table">
+          <thead><tr>
+            <th>Rank</th>
+            <th>Player</th>
+            <th>Games Won</th>
+            <th>Coins Won</th>
+            <th>Net Coins</th>
+          </tr></thead>
+          <tbody id="sb-body"></tbody>
+        </table>
+      </div>
+
+      <div class="sb-games-list" id="sb-games-list"></div>
+    </div>
   </div>
 
   <!-- ===== MODALS ===== -->
 
-  <!-- New Game -->
-  <div id="modal-game" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-game-title">
+  <!-- Add Player (host only) -->
+  <div id="modal-add-player" class="modal-overlay hidden" role="dialog" aria-modal="true">
     <div class="modal">
       <div class="modal-head">
-        <h2 id="modal-game-title">New Game Session</h2>
-        <button class="modal-x" data-close="modal-game" aria-label="Close">✕</button>
-      </div>
-      <div class="field">
-        <label class="field-label" for="new-game-name">Game Name</label>
-        <input type="text" id="new-game-name" class="field-input" placeholder="e.g. Saturday Night Housie">
-      </div>
-      <div class="field">
-        <label class="field-label">Number Pool</label>
-        <div class="radio-group">
-          <label class="radio-opt"><input type="radio" name="gpool" value="90" checked> 1 – 90</label>
-          <label class="radio-opt"><input type="radio" name="gpool" value="100"> 1 – 100</label>
-          <label class="radio-opt"><input type="radio" name="gpool" value="75"> 1 – 75</label>
-          <label class="radio-opt"><input type="radio" name="gpool" value="custom"> Custom:
-            <input type="number" id="game-custom-max" class="input-sm" min="10" max="999" value="90">
-          </label>
-        </div>
-      </div>
-      <div class="modal-foot">
-        <button id="btn-create-game" class="btn btn-primary">Create Game</button>
-        <button class="btn btn-ghost" data-close="modal-game">Cancel</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Add Player -->
-  <div id="modal-player" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-player-title">
-    <div class="modal">
-      <div class="modal-head">
-        <h2 id="modal-player-title">Add Player</h2>
-        <button class="modal-x" data-close="modal-player" aria-label="Close">✕</button>
+        <h2>Add Player</h2>
+        <button class="modal-x" data-close="modal-add-player">✕</button>
       </div>
       <div class="field">
         <label class="field-label" for="new-player-name">Player Name</label>
@@ -201,17 +340,17 @@
       </label>
       <div class="modal-foot">
         <button id="btn-create-player" class="btn btn-primary">Add Player</button>
-        <button class="btn btn-ghost" data-close="modal-player">Cancel</button>
+        <button class="btn btn-ghost" data-close="modal-add-player">Cancel</button>
       </div>
     </div>
   </div>
 
   <!-- Ticket View -->
-  <div id="modal-ticket" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="ticket-title">
+  <div id="modal-ticket" class="modal-overlay hidden" role="dialog" aria-modal="true">
     <div class="modal modal-wide">
       <div class="modal-head">
         <h2 id="ticket-title">Ticket</h2>
-        <button class="modal-x" data-close="modal-ticket" aria-label="Close">✕</button>
+        <button class="modal-x" data-close="modal-ticket">✕</button>
       </div>
       <div id="ticket-display" class="ticket-display"></div>
       <div class="ticket-legend">
@@ -227,13 +366,26 @@
   </div>
 
   <!-- Winner -->
-  <div id="modal-winner" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="winner-title">
+  <div id="modal-winner" class="modal-overlay hidden" role="dialog" aria-modal="true">
     <div class="modal modal-winner">
       <div class="winner-burst" id="winner-burst">🎉</div>
       <h2 id="winner-title">Winner!</h2>
       <div id="winner-info" class="winner-info"></div>
       <div class="modal-foot" style="justify-content:center;margin-top:24px">
-        <button id="btn-close-winner" class="btn btn-primary">🎊 Continue Game</button>
+        <button id="btn-close-winner" class="btn btn-primary">🎊 Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Round Over -->
+  <div id="modal-round-over" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal modal-round-over">
+      <div class="winner-burst">🎯</div>
+      <h2>Round Complete!</h2>
+      <div id="round-over-info"></div>
+      <div class="modal-foot" style="justify-content:center;margin-top:20px">
+        <button id="btn-next-round" class="btn btn-primary">Next Round →</button>
+        <button id="btn-view-scoreboard" class="btn btn-outline">View Scoreboard</button>
       </div>
     </div>
   </div>
