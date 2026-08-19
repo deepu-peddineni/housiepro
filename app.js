@@ -23,11 +23,6 @@ const ALL_PRIZES = [
 
 const DEFAULT_PRIZE_IDS = ['early-five', 'top-row', 'mid-row', 'bot-row', 'full-house'];
 
-const COL_COLORS = [
-  '#f43f5e', '#f97316', '#eab308', '#22c55e',
-  '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6',
-];
-
 const DIGIT_WORDS = [
   'zero','one','two','three','four','five','six','seven','eight','nine'
 ];
@@ -84,15 +79,6 @@ function shuffle(arr) {
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
-}
-
-function colFor(num, max) {
-  if (max <= 90) {
-    if (num <= 9) return 0;
-    if (num >= 80) return 8;
-    return Math.floor(num / 10);
-  }
-  return Math.min(8, Math.floor((num - 1) * 9 / max));
 }
 
 function buildPool(max, drawn = []) {
@@ -784,15 +770,12 @@ function renderBoard() {
 
   board.innerHTML = '';
   for (let n = 1; n <= max; n++) {
-    const col = colFor(n, max);
     const cell = document.createElement('div');
     cell.className = 'board-cell';
     cell.id = `cell-${n}`;
     cell.textContent = n;
-    cell.dataset.col = col;
     if (drawn.has(n)) {
       cell.classList.add('called');
-      cell.style.setProperty('--col-color', COL_COLORS[col]);
     }
     board.appendChild(cell);
   }
@@ -801,8 +784,6 @@ function renderBoard() {
 function updateBoard(num) {
   const cell = qs(`#cell-${num}`);
   if (!cell) return;
-  const col = parseInt(cell.dataset.col);
-  cell.style.setProperty('--col-color', COL_COLORS[col]);
   cell.classList.add('called', 'just-called');
   setTimeout(() => cell.classList.remove('just-called'), 800);
 }
@@ -834,11 +815,9 @@ function updateStats() {
 // =====================================================
 
 function renderPrevStrip() {
-  const max = S.room ? S.room.poolMax : 90;
   const last5 = S.drawn.slice(-6, -1).reverse();
   qs('#prev-strip').innerHTML = last5.map(n => {
-    const col = colFor(n, max);
-    return `<span class="prev-num" style="--col-color:${COL_COLORS[col]}">${n}</span>`;
+    return `<span class="prev-num">${n}</span>`;
   }).join('');
 }
 
@@ -977,10 +956,8 @@ function buildTicketHTML(grid, drawn, max) {
       if (num === null) {
         html += '<td class="ticket-td t-blank">&nbsp;</td>';
       } else {
-        const col = colFor(num, max);
         const marked = drawnSet.has(num);
-        html += `<td class="ticket-td t-num ${marked ? 't-marked' : ''}"
-                     style="--col-color:${COL_COLORS[col]}">${num}</td>`;
+        html += `<td class="ticket-td ${marked ? 't-called' : ''}">${num}</td>`;
       }
     }
     html += '</tr>';

@@ -401,10 +401,10 @@ body {
   width: 30px; height: 30px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   font-size: 11px; font-weight: 700;
-  border: 2px solid var(--col-color);
-  color: var(--col-color);
-  background: color-mix(in srgb, var(--col-color) 15%, transparent);
-  opacity: .65;
+  border: 2px solid var(--green);
+  color: var(--green);
+  background: rgba(16,185,129,.12);
+  opacity: .7;
 }
 
 .progress-wrap { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
@@ -442,15 +442,20 @@ body {
   color: var(--t3); transition: all .3s var(--ease); cursor: default;
 }
 .board-cell.called {
-  background: color-mix(in srgb, var(--col-color) 22%, transparent);
-  border-color: var(--col-color);
-  color: var(--col-color);
-  box-shadow: 0 0 7px color-mix(in srgb, var(--col-color) 35%, transparent);
+  background: rgba(16,185,129,.15);
+  border-color: var(--green);
+  color: var(--green);
 }
-.board-cell.just-called { animation: cell-pop .65s var(--ease); }
+.board-cell.just-called {
+  animation: cell-pop .65s var(--ease);
+  background: rgba(16,185,129,.3);
+  border-color: var(--green);
+  color: #fff;
+  box-shadow: 0 0 14px rgba(16,185,129,.5);
+}
 @keyframes cell-pop {
   0%   { transform: scale(1); }
-  30%  { transform: scale(1.45); box-shadow: 0 0 18px var(--col-color); }
+  30%  { transform: scale(1.4); box-shadow: 0 0 18px var(--green); }
   100% { transform: scale(1); }
 }
 .board-lg .board-cell { font-size: 14px; border-radius: 8px; }
@@ -661,32 +666,33 @@ body {
 .ticket-table { width: 100%; border-collapse: separate; border-spacing: 5px; min-width: 400px; }
 .ticket-td {
   text-align: center; font-size: 16px; font-weight: 700;
-  border-radius: 8px; border: 2px solid;
+  border-radius: 8px; border: 2px solid var(--bdr-hi);
   padding: 10px 4px; position: relative; transition: all .25s;
-}
-.ticket-td.t-num {
-  background: color-mix(in srgb, var(--col-color) 15%, transparent);
-  border-color: color-mix(in srgb, var(--col-color) 50%, transparent);
-  color: var(--t1);
-}
-.ticket-td.t-marked {
-  background: color-mix(in srgb, var(--col-color) 38%, transparent);
-  border-color: var(--col-color);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--col-color) 40%, transparent);
-}
-.ticket-td.t-marked::after {
-  content: '✓';
-  position: absolute; top: 1px; right: 4px; font-size: 9px; color: var(--green);
+  background: var(--surf-1);
+  color: var(--t2);
 }
 .ticket-td.t-blank {
-  background: rgba(255,255,255,.02); border-color: rgba(255,255,255,.05);
+  background: transparent; border-color: transparent;
   color: transparent;
+}
+.ticket-td.t-called {
+  background: rgba(16,185,129,.12);
+  border-color: var(--green);
+  color: var(--green);
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-color: var(--green);
+}
+.ticket-td.t-called::after {
+  content: '✓';
+  position: absolute; top: 1px; right: 4px; font-size: 9px; color: var(--green);
 }
 .ticket-legend { display: flex; gap: 14px; align-items: center; margin-bottom: 6px; }
 .leg-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--t2); }
 .leg-dot { width: 12px; height: 12px; border-radius: 3px; border: 2px solid var(--bdr-hi); background: var(--surf-1); }
-.dot-marked { background: rgba(139,92,246,.3); border-color: var(--purple); }
-.dot-blank { background: rgba(255,255,255,.02); border-color: rgba(255,255,255,.05); }
+.dot-called { background: rgba(16,185,129,.2); border-color: var(--green); }
+.dot-uncalled { background: var(--surf-1); border-color: var(--bdr-hi); }
+.dot-blank { background: transparent; border-color: var(--bdr); }
 
 /* ============================================================
    SCOREBOARD
@@ -799,6 +805,6 @@ body {
   .modal { box-shadow: none !important; background: white !important; border: none !important; max-width: 100% !important; }
   .modal-head, .ticket-legend, .modal-foot { display: none !important; }
   #ticket-title { display: block !important; color: black; font-size: 18px; margin-bottom: 10px; }
-  .ticket-td { color: black !important; border: 2px solid #ccc !important; background: white !important; box-shadow: none !important; }
-  .ticket-td.t-marked { background: #e0e0e0 !important; }
+  .ticket-td { color: black !important; border: 2px solid #ccc !important; background: white !important; box-shadow: none !important; text-decoration: none !important; }
+  .ticket-td.t-called { background: #e8e8e8 !important; border-color: #888 !important; text-decoration: line-through !important; }
 }
