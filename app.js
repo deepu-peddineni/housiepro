@@ -23,6 +23,8 @@ const ALL_PRIZES = [
 
 const DEFAULT_PRIZE_IDS = ['early-five', 'top-row', 'mid-row', 'bot-row', 'full-house'];
 
+const APP_VERSION = 'v2.2';
+
 // =====================================================
 // STATE
 // =====================================================
@@ -321,6 +323,8 @@ function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   const btns = qsa('.theme-toggle');
   btns.forEach(b => b.textContent = theme === 'dark' ? '🌙' : '☀️');
+  const themeColor = qs('#meta-theme-color');
+  if (themeColor) themeColor.setAttribute('content', theme === 'dark' ? '#070918' : '#f0f2f5');
   save();
 }
 
@@ -329,6 +333,11 @@ function toggleTheme() { applyTheme(S.theme === 'dark' ? 'light' : 'dark'); }
 // =====================================================
 // SCREEN NAVIGATION
 // =====================================================
+
+function setSettingsExpanded(expanded) {
+  const tgl = qs('#btn-settings-toggle');
+  if (tgl) tgl.setAttribute('aria-expanded', String(expanded));
+}
 
 function showScreen(name) {
   S.screen = name;
@@ -345,7 +354,7 @@ function showScreen(name) {
 
   // Show/hide settings panel only in game
   const sp = qs('#settings-panel');
-  if (sp && name !== 'game') sp.classList.add('hidden');
+  if (sp && name !== 'game') { sp.classList.add('hidden'); setSettingsExpanded(false); }
 
   const newRoundBtn = qs('#btn-new-round');
   if (newRoundBtn) newRoundBtn.classList.toggle('hidden', name !== 'game');
@@ -427,7 +436,7 @@ function showLobby() {
 
   const isHost = S.players.find(p => p.id === S.myPlayerId)?.isHost;
   const startBtn = qs('#btn-start-game');
-  startBtn.disabled = S.players.length < 1;
+  startBtn.disabled = S.players.length < 2;
   startBtn.textContent = isHost
     ? (S.players.length < 2 ? 'Start Game (need 2+ players)' : 'Start Game')
     : 'Waiting for host to start...';
@@ -513,6 +522,10 @@ function handleBroadcast(msg) {
     handleRemoteDraw(msg.num);
   } else if (msg.type === 'prize-awarded') {
     handleRemotePrize(msg.prizeId, msg.playerId);
+  } else if (msg.type === 'prize-revoked') {
+    handleRemotePrizeRevoke(msg.prizeId, msg.playerId);
+  } else if (msg.type === 'paper-round-revealed') {
+    handleRemotePaperReveal(msg);
   }
 }
 
@@ -664,7 +677,11 @@ function updateCurrentNumber() {
 // AUTO-DRAW + TIMER
 // =====================================================
 
-function getSpeed() { return parseInt(qs('#auto-speed')?.value || '3000', 10); }
+function getSpeed() {
+  const val = parseInt(qs('#auto-speed')?.value, 10);
+  const sec = (!val || isNaN(val) || val < 1) ? 3 : Math.min(60, val);
+  return sec * 1000;
+}
 
 function startAuto() {
   if (S.timerTick) return;
@@ -706,7 +723,7 @@ function updateCountdown() {
     return;
   }
   wrap.classList.add('active');
-  const speed = Math.floor(getSpeed() / 1000);
+  const speed = Math.max(1, Math.floor(getSpeed() / 1000));
   const pct = ((speed - S.timerRemain) / speed) * 100;
   bar.style.width = `${pct}%`;
 }
@@ -755,8 +772,171 @@ function awardPrize(prizeId, playerId) {
   renderRoundList();
 }
 
+function revokePrize(prizeId, playerId) {
+  const curRound = S.rounds.find(rn => rn.roundNo === S.currentRound);
+  if (!curRound) return;
+
+  const prize = curRound.prizes.find(p => p.id === prizeId);
+  const player = S.players.find(p => p.id === playerId);
+  if (!prize || !player) return;
+
+  if (!prize.winnerIds) prize.winnerIds = prize.winnerId ? [prize.winnerId] : [];
+  if (!prize.winnerIds.includes(playerId)) return;
+
+  prize.winnerIds = prize.winnerIds.filter(id => id !== playerId);
+  if (prize.winnerIds.length === 0) {
+    prize.winnerId = null;
+    prize.wonAt = null;
+  } else {
+    prize.winnerId = prize.winnerIds[0];
+  }
+
+  // Rollback coins on scoreboard
+  if (S.scoreboard[playerId]) {
+    const reward = (S.room?.entryFee || 1) * 2;
+    S.scoreboard[playerId].coinsWon = Math.max(0, (S.scoreboard[playerId].coinsWon || 0) - reward);
+    if (prizeId === 'full-house' && curRound.completed && S.scoreboard[playerId].gamesWon > 0) {
+      S.scoreboard[playerId].gamesWon--;
+    }
+  }
+
+  save();
+  toast(`Deselected ${player.name} for ${prize.name}`);
+
+  if (S.channel) {
+    S.channel.postMessage({ type: 'prize-revoked', prizeId, playerId });
+  }
+
+  renderPrizes();
+  renderRoundList();
+  renderMiniScoreboard();
+}
+
 function handleRemotePrize(prizeId, playerId) {
   awardPrize(prizeId, playerId);
+}
+
+function handleRemotePrizeRevoke(prizeId, playerId) {
+  const curRound = S.rounds.find(rn => rn.roundNo === S.currentRound);
+  if (!curRound) return;
+  const prize = curRound.prizes.find(p => p.id === prizeId);
+  if (!prize) return;
+  if (!prize.winnerIds) prize.winnerIds = prize.winnerId ? [prize.winnerId] : [];
+  prize.winnerIds = prize.winnerIds.filter(id => id !== playerId);
+  if (prize.winnerIds.length === 0) {
+    prize.winnerId = null;
+    prize.wonAt = null;
+  } else {
+    prize.winnerId = prize.winnerIds[0];
+  }
+  if (S.scoreboard[playerId]) {
+    const reward = (S.room?.entryFee || 1) * 2;
+    S.scoreboard[playerId].coinsWon = Math.max(0, (S.scoreboard[playerId].coinsWon || 0) - reward);
+    if (prizeId === 'full-house' && curRound.completed && S.scoreboard[playerId].gamesWon > 0) {
+      S.scoreboard[playerId].gamesWon--;
+    }
+  }
+  save();
+  renderPrizes();
+  renderRoundList();
+  renderMiniScoreboard();
+}
+
+// =====================================================
+// PAPER MODE – CLOSE ROUND & REVEAL REMAINING NUMBERS
+// =====================================================
+
+function closePaperRoundAndReveal() {
+  const curRound = S.rounds.find(rn => rn.roundNo === S.currentRound);
+  if (!curRound) return;
+
+  stopAuto();
+
+  const startCall = S.drawn.length + 1;
+  const remainingSequence = [];
+
+  // Pop remaining numbers from shuffled pool
+  while (S.pool.length > 0) {
+    const num = S.pool.pop();
+    remainingSequence.push(num);
+    S.drawn.push(num);
+  }
+
+  curRound.drawn = [...S.drawn];
+  curRound.completed = true;
+  curRound.remainingRevealed = remainingSequence; // ponytail: simple array store on round
+
+  // Mark full house winners on scoreboard if not already marked
+  const fhPrize = curRound.prizes.find(p => p.id === 'full-house');
+  if (fhPrize) {
+    const winnerIds = fhPrize.winnerIds || (fhPrize.winnerId ? [fhPrize.winnerId] : []);
+    winnerIds.forEach(id => {
+      if (S.scoreboard[id]) S.scoreboard[id].gamesWon++;
+    });
+  }
+
+  save();
+  playWinner();
+
+  updateStats();
+  renderBoard();
+  renderPrevStrip();
+  renderRoundList();
+  renderPrizes();
+
+  if (S.channel) {
+    S.channel.postMessage({
+      type: 'paper-round-revealed',
+      roundNo: curRound.roundNo,
+      drawn: S.drawn,
+      remainingSequence
+    });
+  }
+
+  showRemainingSequenceModal(remainingSequence, startCall);
+}
+
+function handleRemotePaperReveal(msg) {
+  S.drawn = msg.drawn;
+  const curRound = S.rounds.find(rn => rn.roundNo === msg.roundNo);
+  if (curRound) {
+    curRound.drawn = [...msg.drawn];
+    curRound.completed = true;
+    curRound.remainingRevealed = msg.remainingSequence;
+  }
+  save();
+  updateStats();
+  renderBoard();
+  renderPrevStrip();
+  renderRoundList();
+  renderPrizes();
+  showRemainingSequenceModal(msg.remainingSequence, S.drawn.length - msg.remainingSequence.length + 1);
+}
+
+function showRemainingSequenceModal(remainingSeq, startCall) {
+  const summaryEl = qs('#revealed-summary');
+  const gridEl = qs('#revealed-grid');
+  if (!summaryEl || !gridEl) return;
+
+  const curRound = S.rounds.find(rn => rn.roundNo === S.currentRound);
+  const roundNo = curRound ? curRound.roundNo : S.currentRound;
+  const drawnPrior = startCall - 1;
+
+  summaryEl.innerHTML = `
+    <strong>Round ${roundNo} Closed:</strong> ${drawnPrior} numbers were drawn during gameplay.<br>
+    <strong>${remainingSeq.length}</strong> remaining numbers were revealed instantly in the order shown below.
+  `;
+
+  gridEl.innerHTML = remainingSeq.map((num, idx) => {
+    const seqNo = startCall + idx;
+    return `
+      <div class="revealed-cell" title="Call #${seqNo}: ${num}">
+        <span class="revealed-seq-num">#${seqNo}</span>
+        <span class="revealed-val">${num}</span>
+      </div>`;
+  }).join('');
+
+  openModal('modal-revealed-sequence');
 }
 
 function completeRound() {
@@ -803,11 +983,18 @@ function resetRound() {
   const curRound = S.rounds.find(rn => rn.roundNo === S.currentRound);
   if (curRound) {
     curRound.drawn = [];
-    curRound.prizes.forEach(p => { p.winnerId = null; p.wonAt = null; });
+    curRound.remainingRevealed = null;
+    curRound.prizes.forEach(p => { p.winnerId = null; p.winnerIds = []; p.wonAt = null; });
   }
   save();
   qs('#num-display').textContent = '–';
-  qs('#prev-strip').innerHTML = '';
+  qs('#num-display').className = 'number-big';
+  const ring = qs('.number-ring');
+  if (ring) ring.className = 'number-ring';
+  const prevStrip = qs('#prev-strip');
+  if (prevStrip) prevStrip.innerHTML = '<span class="hint-text" style="font-size:12px;margin:auto">Numbers will appear here as they are called</span>';
+  const prevCount = qs('#prev-count');
+  if (prevCount) prevCount.textContent = '0';
   qs('#progress-fill').style.width = '0%';
   renderAll();
 }
@@ -819,6 +1006,8 @@ function resetRound() {
 function renderBoard() {
   const max = S.room ? S.room.poolMax : 90;
   const drawn = new Set(S.drawn);
+  const curRound = S.rounds.find(rn => rn.roundNo === S.currentRound);
+  const revealedSet = new Set(curRound?.remainingRevealed || []);
   const board = qs('#number-board');
 
   // Calculate optimal columns: prefer 10 for ≤100, 8 for larger
@@ -833,6 +1022,10 @@ function renderBoard() {
     cell.textContent = n;
     if (drawn.has(n)) {
       cell.classList.add('called');
+      if (revealedSet.has(n)) {
+        cell.classList.add('revealed-auto');
+        cell.title = `Number ${n} (revealed at close)`;
+      }
     }
     board.appendChild(cell);
   }
@@ -874,13 +1067,32 @@ function updateStats() {
 }
 
 // =====================================================
-// UI – PREV STRIP
+// UI – PREV STRIP (Last 10 Numbers Called)
 // =====================================================
 
 function renderPrevStrip() {
-  const last10 = S.drawn.slice(-11, -1).reverse();
-  qs('#prev-strip').innerHTML = last10.map(n => {
-    return `<span class="prev-num">${n}</span>`;
+  const strip = qs('#prev-strip');
+  const countBadge = qs('#prev-count');
+  if (!strip) return;
+
+  const totalCalled = S.drawn.length;
+  if (countBadge) countBadge.textContent = Math.min(10, totalCalled);
+
+  if (!totalCalled) {
+    strip.innerHTML = '<span class="hint-text" style="font-size:12px;margin:auto">Numbers will appear here as they are called</span>';
+    return;
+  }
+
+  // Display the last 10 numbers in reverse chronological order (latest call first)
+  const last10 = S.drawn.slice(-10).reverse();
+  strip.innerHTML = last10.map((num, idx) => {
+    const callNo = totalCalled - idx;
+    const isLatest = idx === 0;
+    return `
+      <div class="prev-badge ${isLatest ? 'latest-call' : ''}" title="Call #${callNo}: ${num}">
+        <span class="prev-num">${num}</span>
+        <span class="prev-seq">#${callNo}</span>
+      </div>`;
   }).join('');
 }
 
@@ -962,23 +1174,47 @@ function renderPrizes() {
   const curRound = S.rounds.find(rn => rn.roundNo === S.currentRound);
   if (!curRound) { list.innerHTML = '<p class="hint-text">No active round</p>'; return; }
 
-  list.innerHTML = curRound.prizes.map(p => {
+  const isPaperMode = S.room?.gameMode === 'paper';
+  const allPrizesWon = curRound.prizes.length > 0 && curRound.prizes.every(p => {
+    const wIds = p.winnerIds || (p.winnerId ? [p.winnerId] : []);
+    return wIds.length > 0;
+  });
+
+  const paperCloseBanner = (isPaperMode && allPrizesWon && !curRound.completed)
+    ? `<div class="paper-round-close-card">
+         <div class="paper-close-title">🎉 All Prizes Claimed!</div>
+         <div class="paper-close-desc">All prizes for Round ${curRound.roundNo} are won. Close this round to reveal the remaining sequence of numbers.</div>
+         <button id="btn-close-paper-round" class="btn btn-reveal-round" onclick="closePaperRoundAndReveal()">
+           🏁 Close Round & Reveal Remaining Numbers
+         </button>
+       </div>`
+    : '';
+
+  const prizeCards = curRound.prizes.map(p => {
     const winnerIds = p.winnerIds || (p.winnerId ? [p.winnerId] : []);
     const winners = winnerIds.map(id => S.players.find(pl => pl.id === id)).filter(Boolean);
     const hasWinners = winners.length > 0;
 
-    // Show player buttons if no winners OR if we want to allow more winners
+    // Show player buttons: green if unawarded, danger/highlighted if already won (click to deselect)
     const playerBtns = S.players.length
       ? `<div class="prize-btn-row">${S.players.map(pl => {
           const alreadyWon = winnerIds.includes(pl.id);
-          return `<button class="btn btn-xs ${alreadyWon ? 'btn-ghost' : 'btn-green'} prize-claim"
-                   onclick="awardPrize('${p.id}','${pl.id}')"
-                   title="Award ${p.name} to ${esc(pl.name)}"
-                   ${alreadyWon ? 'disabled' : ''}>
-             ${esc(pl.name)}${alreadyWon ? ' ✓' : ''}
+          return `<button class="btn btn-xs ${alreadyWon ? 'prize-selected' : 'btn-green'} prize-claim"
+                   onclick="${alreadyWon ? `revokePrize('${p.id}','${pl.id}')` : `awardPrize('${p.id}','${pl.id}')`}"
+                   title="${alreadyWon ? `Click to deselect ${esc(pl.name)}` : `Award ${p.name} to ${esc(pl.name)}`}">
+             ${esc(pl.name)}${alreadyWon ? ' ✕' : ''}
            </button>`;
         }).join('')}</div>`
       : '<p class="hint-text" style="padding:3px 0">No players</p>';
+
+    const winnerChips = hasWinners
+      ? `<div class="prize-winner-name">🏆 ${winners.map(w => `
+          <span class="winner-tag">
+            ${esc(w.name)}
+            <button type="button" class="btn-remove-winner" onclick="revokePrize('${p.id}','${w.id}')" title="Deselect ${esc(w.name)}">✕</button>
+          </span>
+        `).join('')}</div>`
+      : '';
 
     return `
       <div class="prize-card ${hasWinners ? 'won' : ''}">
@@ -987,10 +1223,12 @@ function renderPrizes() {
           <span class="prize-name">${p.name}</span>
           ${p.wonAt ? `<span class="prize-at">call #${p.wonAt}</span>` : ''}
         </div>
-        ${hasWinners ? `<div class="prize-winner-name">🏆 ${winners.map(w => esc(w.name)).join(', ')}</div>` : ''}
+        ${winnerChips}
         ${playerBtns}
       </div>`;
   }).join('');
+
+  list.innerHTML = paperCloseBanner + prizeCards;
 }
 
 // =====================================================
@@ -1249,6 +1487,10 @@ document.addEventListener('DOMContentLoaded', () => {
   load();
   applyTheme(S.theme);
 
+  // ── Version label ──
+  const versionEl = qs('#landing-version');
+  if (versionEl) versionEl.textContent = APP_VERSION;
+
   // ── Theme toggles ──
   qsa('.theme-toggle').forEach(btn => btn.addEventListener('click', toggleTheme));
 
@@ -1270,8 +1512,17 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ── Settings panel toggle ──
-  qs('#btn-settings-toggle')?.addEventListener('click', () => {
-    qs('#settings-panel')?.classList.toggle('hidden');
+  const settingsToggle = qs('#btn-settings-toggle');
+  const settingsPanel = qs('#settings-panel');
+  settingsToggle?.addEventListener('click', () => {
+    const willShow = settingsPanel?.classList.toggle('hidden') === false;
+    settingsToggle.setAttribute('aria-expanded', String(willShow));
+  });
+  document.addEventListener('click', e => {
+    if (!settingsPanel || settingsPanel.classList.contains('hidden')) return;
+    if (settingsPanel.contains(e.target) || settingsToggle?.contains(e.target)) return;
+    settingsPanel.classList.add('hidden');
+    settingsToggle?.setAttribute('aria-expanded', 'false');
   });
 
   // ── Full scoreboard button ──
@@ -1415,6 +1666,36 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── Winner modal ──
   qs('#btn-close-winner').addEventListener('click', () => closeModal('modal-winner'));
 
+  // ── Auto-speed live update ──
+  qs('#auto-speed')?.addEventListener('input', () => {
+    if (S.timerTick) {
+      const sec = Math.max(1, parseInt(qs('#auto-speed').value, 10) || 3);
+      S.timerRemain = Math.min(S.timerRemain, sec);
+      updateCountdown();
+    }
+  });
+
+  // ── Revealed Sequence Modal Buttons ──
+  qs('#btn-copy-revealed-seq')?.addEventListener('click', () => {
+    const curRound = S.rounds.find(rn => rn.roundNo === S.currentRound);
+    if (!curRound || !curRound.remainingRevealed || !curRound.remainingRevealed.length) {
+      toast('No revealed numbers to copy');
+      return;
+    }
+    const startCall = curRound.drawn.length - curRound.remainingRevealed.length + 1;
+    const text = curRound.remainingRevealed.map((num, i) => `#${startCall + i}: ${num}`).join(', ');
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => toast('Sequence copied to clipboard!'));
+    } else {
+      toast('Copied sequence!');
+    }
+  });
+
+  qs('#btn-revealed-next-round')?.addEventListener('click', () => {
+    closeModal('modal-revealed-sequence');
+    nextRound();
+  });
+
   // ── Modal close buttons ──
   document.addEventListener('click', e => {
     const t = e.target.closest('[data-close]');
@@ -1436,6 +1717,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Escape') {
       qsa('.modal-overlay:not(.hidden)').forEach(m => m.classList.add('hidden'));
       qs('#settings-panel')?.classList.add('hidden');
+      setSettingsExpanded(false);
       stopAuto();
     }
   });

@@ -2,10 +2,19 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="color-scheme" content="dark light">
   <title>HousiePro – Professional Tambola Game Manager</title>
   <meta name="description" content="Professional Housie/Tambola game manager with rooms, multiplayer, voice announcements, and scoreboards.">
+  <meta name="theme-color" content="#070918" id="meta-theme-color">
+  <meta name="apple-mobile-web-app-title" content="HousiePro">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta property="og:title" content="HousiePro – Professional Tambola Game Manager">
+  <meta property="og:description" content="Host a Housie/Tambola game with rooms, auto-draw, voice callouts, live scoreboard and digital tickets.">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
@@ -35,13 +44,13 @@
     <nav class="topbar-controls" aria-label="Game controls" id="topbar-game-controls">
       <div class="ctrl-group draw-group">
         <button id="btn-draw" class="btn btn-primary btn-draw" title="Draw next number [Space]">🎱 Draw</button>
-        <button id="btn-auto" class="btn btn-cyan" title="Toggle auto-draw [A]">▶ Auto</button>
+        <button id="btn-auto" class="btn btn-cyan" aria-label="Toggle auto-draw" title="Toggle auto-draw [A]">▶ Auto</button>
       </div>
 
       <span class="vdiv"></span>
 
       <div class="ctrl-group">
-        <button id="btn-settings-toggle" class="btn btn-ghost btn-settings" title="Game Settings">⚙ Settings</button>
+        <button id="btn-settings-toggle" class="btn btn-ghost btn-settings" aria-expanded="false" aria-controls="settings-panel" title="Game Settings">⚙ Settings</button>
       </div>
     </nav>
 
@@ -55,26 +64,20 @@
           <option value="75">1 – 75</option>
           <option value="50">1 – 50</option>
         </select>
-        <label class="ctrl-label" for="auto-speed">Interval</label>
-        <select id="auto-speed" class="select">
-          <option value="8000">8s</option>
-          <option value="5000">5s</option>
-          <option value="3000" selected>3s</option>
-          <option value="2000">2s</option>
-          <option value="1000">1s</option>
-        </select>
+        <label class="ctrl-label" for="auto-speed">Delay (s)</label>
+        <input type="number" id="auto-speed" class="field-input auto-speed-input" min="1" max="60" value="3" step="1" title="Auto-draw interval in seconds">
         <label class="ctrl-label" for="voice-select">Voice</label>
         <select id="voice-select" class="select" style="max-width:130px"></select>
       </div>
     </div>
 
     <div class="topbar-right">
-      <button id="btn-share-game" class="btn btn-outline" title="Copy invite link">🔗</button>
-      <button id="btn-scoreboard" class="btn btn-outline" title="Scoreboard">🏆</button>
-      <button id="btn-new-round" class="btn btn-primary hidden">＋ Round</button>
-      <button id="btn-home" class="btn btn-danger btn-sm" title="Leave game & go home">🏠</button>
-      <button id="btn-theme" class="theme-toggle" title="Toggle theme" aria-label="Toggle theme">🌙</button>
-      <button id="btn-reset" class="btn btn-danger btn-sm" title="Reset round [R]">↺</button>
+      <button id="btn-share-game" class="btn btn-outline btn-icon" aria-label="Share invite link" title="Copy invite link">🔗</button>
+      <button id="btn-scoreboard" class="btn btn-outline btn-icon" aria-label="View scoreboard" title="Scoreboard">🏆</button>
+      <button id="btn-new-round" class="btn btn-primary hidden" aria-label="Start next round" title="Start next round">＋ Round</button>
+      <button id="btn-home" class="btn btn-danger btn-sm btn-icon" aria-label="Leave game and go home" title="Leave game & go home">🏠</button>
+      <button id="btn-theme" class="theme-toggle" aria-label="Toggle theme" title="Toggle theme">🌙</button>
+      <button id="btn-reset" class="btn btn-danger btn-sm btn-icon" aria-label="Reset round" title="Reset round [R]">↺</button>
     </div>
   </header>
 
@@ -82,10 +85,17 @@
   <div id="screen-landing" class="screen">
     <div class="landing-hero">
       <div class="landing-logo">
-        <span class="landing-emoji">🎱</span>
+        <div class="landing-ball" aria-hidden="true"><span class="landing-emoji">🎱</span></div>
         <h1 class="landing-title">Housie<em>Pro</em></h1>
       </div>
       <p class="landing-sub">Professional Tambola Game Manager</p>
+
+      <div class="landing-chips" aria-hidden="true">
+        <span>🏠 Rooms &amp; Invites</span>
+        <span>🎤 Voice Callouts</span>
+        <span>🏆 Live Scoreboard</span>
+        <span>🎫 Auto Tickets</span>
+      </div>
 
       <div class="landing-actions">
         <button id="btn-create-room" class="btn btn-primary btn-lg">
@@ -97,8 +107,8 @@
       </div>
 
       <div class="landing-footer">
-        <button id="btn-theme-landing" class="theme-toggle" title="Toggle theme">🌙</button>
-        <span class="landing-version">v2.0</span>
+        <button id="btn-theme-landing" class="theme-toggle" aria-label="Toggle theme" title="Toggle theme">🌙</button>
+        <span class="landing-version">v2.2</span>
       </div>
     </div>
   </div>
@@ -227,7 +237,7 @@
       </div>
 
       <div class="lobby-actions">
-        <button id="btn-start-game" class="btn btn-primary btn-lg" disabled>Start Game (need 1+ players)</button>
+        <button id="btn-start-game" class="btn btn-primary btn-lg" disabled>Start Game (need 2+ players)</button>
       </div>
     </div>
   </div>
@@ -259,7 +269,13 @@
           <div class="countdown-bar" id="countdown-bar">
             <div class="countdown-fill" id="countdown-fill"></div>
           </div>
-          <div class="prev-strip" id="prev-strip"></div>
+          <div class="recent-calls-wrap">
+            <div class="recent-calls-head">
+              <span class="recent-calls-title">Last 10 Numbers Called</span>
+              <span class="badge" id="prev-count">0</span>
+            </div>
+            <div class="prev-strip" id="prev-strip"></div>
+          </div>
           <div class="progress-wrap">
             <div class="progress-track">
               <div class="progress-fill" id="progress-fill" style="width:0%"></div>
@@ -418,6 +434,28 @@
       <div class="modal-foot" style="justify-content:center;margin-top:20px">
         <button id="btn-next-round" class="btn btn-primary">Next Round →</button>
         <button id="btn-view-scoreboard" class="btn btn-outline">View Scoreboard</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Revealed Numbers Sequence Modal (Paper Mode) -->
+  <div id="modal-revealed-sequence" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal modal-wide modal-revealed">
+      <div class="modal-head">
+        <h2>📋 Round Complete – Revealed Numbers</h2>
+        <button class="modal-x" data-close="modal-revealed-sequence">✕</button>
+      </div>
+      <div class="revealed-modal-body">
+        <div class="revealed-summary" id="revealed-summary"></div>
+        <div class="revealed-grid-container">
+          <div class="revealed-grid-header">Remaining numbers revealed in call sequence:</div>
+          <div class="revealed-grid" id="revealed-grid"></div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button id="btn-copy-revealed-seq" class="btn btn-secondary">📋 Copy Sequence</button>
+        <button id="btn-revealed-next-round" class="btn btn-primary">Next Round →</button>
+        <button class="btn btn-ghost" data-close="modal-revealed-sequence">Close</button>
       </div>
     </div>
   </div>

@@ -147,7 +147,18 @@ Simply serve the 4 files (`index.html`, `style.css`, `app.js`, `.nojekyll`) from
 
 ## Changelog
 
-### v2.1 (Latest)
+### v2.2 (Latest)
+- 🎨 UI polish for release: custom `favicon.svg`, Open Graph + `theme-color` meta tags
+- 🏠 Refreshed landing hero — animated billiard-ball logo ring + feature chips
+- 🔘 Consistent circular icon buttons in the topbar with proper `aria-label`s
+- ♿ `:focus-visible` outlines, `prefers-reduced-motion` support, 100dvh mobile height
+- 📱 Toast messages wrap gracefully on narrow screens
+- 🖼️ Refined announce card shadow and board-cell called states
+- ⚙️ Settings panel closes on outside click; `aria-expanded` kept in sync
+- 🚦 Lobby Start button disabled until 2+ players (matches actual rule)
+- 🔢 Version label synced everywhere (v2.2)
+
+### v2.1
 - 🏠 Home button — Leave game and return to landing (with confirmation)
 - Session restore on refresh — localStorage persistence
 - Pool sync — Settings panel dropdown reflects actual room pool
