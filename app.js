@@ -586,13 +586,7 @@ function showLobby() {
   qs('#lb-best-of').textContent = `Best of ${r.bestOf}`;
   qs('#lb-entry-fee').textContent = `Entry: ${r.entryFee} coin${r.entryFee !== 1 ? 's' : ''}`;
 
-  const isHost = S.players.find(p => p.id === S.myPlayerId)?.isHost;
-  const startBtn = qs('#btn-start-game');
-  startBtn.disabled = S.players.length < 2;
-  startBtn.textContent = isHost
-    ? (S.players.length < 2 ? 'Start Game (need 2+ players)' : 'Start Game')
-    : 'Waiting for host to start...';
-  if (!isHost) startBtn.disabled = true;
+  updateStartButton();
 
   // Update topbar
   qs('#tb-room-name').textContent = r.name;
@@ -610,6 +604,23 @@ function renderLobbyPlayers() {
       ${p.isHost ? '<div class="lobby-player-host">HOST</div>' : ''}
     </div>
   `).join('');
+
+  // The player list can change without showLobby() running (adding a player
+  // locally, a remote join/leave, a state sync), so the Start button has to be
+  // recomputed here too or it stays stuck on its state from room creation.
+  updateStartButton();
+}
+
+// A game needs at least 2 players, and only the host may start it.
+function updateStartButton() {
+  const btn = qs('#btn-start-game');
+  if (!btn || !S.room) return;
+  const isHost = !!S.players.find(p => p.id === S.myPlayerId)?.isHost;
+  const enough = S.players.length >= 2;
+  btn.disabled = !isHost || !enough;
+  btn.textContent = isHost
+    ? (enough ? 'Start Game' : 'Start Game (need 2+ players)')
+    : 'Waiting for host to start...';
 }
 
 // =====================================================
