@@ -61,11 +61,13 @@
         <select id="pool-preset" class="select">
           <option value="90">1 – 90</option>
           <option value="100">1 – 100</option>
-          <option value="75">1 – 75</option>
-          <option value="50">1 – 50</option>
+          <option value="80">1 – 80</option>
+          <option value="120">1 – 120</option>
+          <option value="150">1 – 150</option>
+          <option value="999">1 – 999</option>
         </select>
         <label class="ctrl-label" for="auto-speed">Delay (s)</label>
-        <input type="number" id="auto-speed" class="field-input auto-speed-input" min="1" max="60" value="3" step="1" title="Auto-draw interval in seconds">
+        <input type="number" id="auto-speed" class="field-input auto-speed-input" min="1" max="60" value="3" step="1" inputmode="numeric" pattern="[0-9]*" title="Auto-draw interval in seconds">
         <label class="ctrl-label" for="voice-select">Voice</label>
         <select id="voice-select" class="select" style="max-width:130px"></select>
       </div>
@@ -152,11 +154,14 @@
         <select id="cr-pool" class="select" style="width:100%">
           <option value="90">1 – 90 (Classic Tambola)</option>
           <option value="100">1 – 100</option>
-          <option value="75">1 – 75</option>
-          <option value="50">1 – 50</option>
-          <option value="custom">Custom…</option>
+          <option value="80">1 – 80</option>
+          <option value="120">1 – 120</option>
+          <option value="150">1 – 150</option>
+          <option value="999">1 – 999</option>
+          <option value="custom">Custom… (80–999)</option>
         </select>
-        <input type="number" id="cr-custom-pool" class="field-input hidden" min="10" max="999" value="90" placeholder="Enter pool size (10–999)" style="margin-top:6px">
+        <input type="number" id="cr-custom-pool" class="field-input hidden" min="80" max="999" step="1" value="90" inputmode="numeric" pattern="[0-9]*" placeholder="Enter pool size (80–999)" style="margin-top:6px">
+        <p class="field-hint">A 3×9 ticket needs 9 usable columns, so the pool must be at least 80.</p>
       </div>
 
       <div class="field">
@@ -167,11 +172,11 @@
       <div class="field-row">
         <div class="field" style="flex:1">
           <label class="field-label" for="cr-best-of">Number of Games</label>
-          <input type="number" id="cr-best-of" class="field-input" min="1" max="99" value="5">
+          <input type="number" id="cr-best-of" class="field-input" min="1" max="99" step="1" value="5" inputmode="numeric" pattern="[0-9]*">
         </div>
         <div class="field" style="flex:1">
           <label class="field-label" for="cr-entry-fee">Entry Fee (coins)</label>
-          <input type="number" id="cr-entry-fee" class="field-input" min="0" max="100" value="1">
+          <input type="number" id="cr-entry-fee" class="field-input" min="0" max="100000" step="1" value="1" inputmode="numeric" pattern="[0-9]*">
         </div>
       </div>
 
@@ -271,7 +276,7 @@
           </div>
           <div class="recent-calls-wrap">
             <div class="recent-calls-head">
-              <span class="recent-calls-title">Last 10 Numbers Called</span>
+              <span class="recent-calls-title">Last <span id="recent-count-label">20</span> Numbers Called</span>
               <span class="badge" id="prev-count">0</span>
             </div>
             <div class="prev-strip" id="prev-strip"></div>
@@ -459,6 +464,9 @@
       </div>
     </div>
   </div>
+
+  <!-- Confetti layer (prize claims) -->
+  <div class="confetti-layer" id="confetti-layer" aria-hidden="true"></div>
 
   <!-- Toast -->
   <div id="toast" class="toast" role="status" aria-live="polite"></div>

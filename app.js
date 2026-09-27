@@ -23,6 +23,29 @@ const ALL_PRIZES = [
 
 const DEFAULT_PRIZE_IDS = ['early-five', 'top-row', 'mid-row', 'bot-row', 'full-house'];
 
+// A 3x9 ticket needs 9 usable columns. With the classic decade layout column 9
+// starts at 80, so anything below 80 cannot be filled - 80 is the real floor.
+const MIN_POOL = 80;
+const MAX_POOL = 999;
+const DEFAULT_POOL = 90;
+
+function clampPool(n) {
+  // Number('') is 0, so an empty field has to be rejected explicitly or it
+  // would silently snap down to MIN_POOL instead of using the default.
+  if (n === '' || n === null || n === undefined) return DEFAULT_POOL;
+  const v = Math.floor(Number(n));
+  if (!Number.isFinite(v)) return DEFAULT_POOL;
+  return Math.min(MAX_POOL, Math.max(MIN_POOL, v));
+}
+
+// Same idea, for every other numeric field in the app.
+function clampInt(n, min, max, fallback) {
+  if (n === '' || n === null || n === undefined) return fallback;
+  const v = Math.floor(Number(n));
+  if (!Number.isFinite(v)) return fallback;
+  return Math.min(max, Math.max(min, v));
+}
+
 const APP_VERSION = 'v2.2';
 
 // =====================================================
@@ -44,6 +67,9 @@ const S = {
   autoInterval:   null,
   timerRemain:    0,
   timerTick:      null,
+  completeQueued: false,
+  // Set while a winner is being announced; the draw resumes on dismissal
+  pausedForWinner: false,
   // All rounds data
   rounds:         [],    // [{ roundNo, drawn:[], prizes:[{...winnerId}], completed }]
   // Scoreboard data
@@ -52,6 +78,7 @@ const S = {
   voices:         [],
   voiceIndex:     undefined,
   audioCtx:       null,
+  speechPrimed:   false,
   // BroadcastChannel
   channel:        null,
 };
@@ -89,10 +116,94 @@ function buildPool(max, drawn = []) {
   return shuffle(pool);
 }
 
+// navigator.clipboard is undefined outside a secure context, which is the norm
+// when the game is served over http:// on a LAN IP or opened from file://.
+// `navigator.clipboard?.writeText(t).then(...)` throws in that case, so fall
+// back to a hidden textarea + execCommand('copy').
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (_) {}
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (_) {
+    return false;
+  }
+}
+
 function qs(sel) { return document.querySelector(sel); }
 function qsa(sel) { return document.querySelectorAll(sel); }
 function esc(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Keeps every number input/select behaving the same way: strips junk, snaps to
+// the allowed range, and writes the normalised value back to the field. Without
+// this a field can hold 0, 5000, "" or "12abc" and silently corrupt the room.
+function bindNumberField(el, { min, max, fallback, step = 1, onChange }) {
+  if (!el) return;
+  const normalise = (commit) => {
+    let v = parseInt(el.value, 10);
+    if (!Number.isFinite(v)) v = fallback;
+    if (v < min) v = min;
+    if (v > max) v = max;
+    if (step > 1) v = Math.round(v / step) * step;
+    if (v < min) v = min;
+    if (commit) el.value = String(v);
+    return v;
+  };
+  el.min = String(min);
+  el.max = String(max);
+  el.step = String(step);
+  el.setAttribute('inputmode', 'numeric');
+  el.setAttribute('pattern', '[0-9]*');
+  // 'change' fires on blur/enter for pickers; 'input' would fight the user
+  // mid-typing by rewriting what they are still entering.
+  el.addEventListener('change', () => {
+    const v = normalise(true);
+    if (onChange) onChange(v);
+  });
+  el.addEventListener('blur', () => normalise(true));
+  el.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { normalise(true); if (onChange) onChange(normalise(false)); }
+  });
+  el._normalise = () => normalise(true);
+}
+
+// Confetti burst for prize claims. Skipped when the user asked for reduced
+// motion, and cleaned up after itself so it can't leak nodes.
+function celebrate(count = 34) {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const host = qs('#confetti-layer');
+  if (!host) return;
+  const colors = ['#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899'];
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < count; i++) {
+    const bit = document.createElement('i');
+    bit.className = 'confetti-bit';
+    bit.style.setProperty('--x', `${(Math.random() * 100).toFixed(1)}vw`);
+    bit.style.setProperty('--dx', `${(Math.random() * 60 - 30).toFixed(0)}px`);
+    bit.style.setProperty('--rot', `${Math.round(Math.random() * 720 - 360)}deg`);
+    bit.style.setProperty('--dur', `${(1.5 + Math.random() * 1.1).toFixed(2)}s`);
+    bit.style.setProperty('--delay', `${(Math.random() * 0.35).toFixed(2)}s`);
+    bit.style.background = colors[i % colors.length];
+    if (i % 3 === 0) bit.style.borderRadius = '50%';
+    frag.appendChild(bit);
+  }
+  host.appendChild(frag);
+  setTimeout(() => { host.innerHTML = ''; }, 3200);
 }
 
 let toastTimer;
@@ -134,6 +245,10 @@ function load() {
     S.theme = localStorage.getItem('hp-theme') || 'dark';
     const vi = localStorage.getItem('hp-voice');
     S.voiceIndex = vi !== null ? parseInt(vi, 10) : undefined;
+    // Migrate legacy bare-grid tickets to { grid, poolMax }
+    S.players.forEach(p => {
+      if (Array.isArray(p.ticket)) p.ticket = { grid: p.ticket, poolMax: (S.room && S.room.poolMax) || 90 };
+    });
   } catch (e) {
     S.room = null; S.players = []; S.rounds = []; S.scoreboard = {};
   }
@@ -237,36 +352,61 @@ function pickVoice() {
 }
 
 function numberToWords(n) {
-  if (n === 0) return 'zero';
+  const num = Math.floor(Math.abs(Number(n)));
+  if (!Number.isFinite(num)) return String(n);
+  if (num === 0) return 'zero';
+  if (num > 999) return String(num);
+
+  const ones = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+  const teens = ['ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen',
+                 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
   const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
-  if (n <= 19) {
-    const ones = ['','one','two','three','four','five','six','seven','eight','nine','ten',
-                  'eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
-    return ones[n];
-  }
-  if (n % 10 === 0) return tens[Math.floor(n / 10)];
-  return tens[Math.floor(n / 10)] + '-' + (['','','two','three','four','five','six','seven','eight','nine'][n % 10]);
+
+  const under100 = v => {
+    if (v < 10) return ones[v];
+    if (v < 20) return teens[v - 10];
+    return tens[Math.floor(v / 10)] + (v % 10 ? '-' + ones[v % 10] : '');
+  };
+
+  if (num < 100) return under100(num);
+  return ones[Math.floor(num / 100)] + ' hundred' + (num % 100 ? ' ' + under100(num % 100) : '');
 }
 
 function speakNumber(num) {
-  if (!window.speechSynthesis) return;
-  speechSynthesis.cancel();
-  const text = `Number ${numberToWords(num)}`;
-  const u = new SpeechSynthesisUtterance(text);
-  u.rate = 0.85; u.pitch = 1.05; u.volume = 1;
-  const voice = pickVoice();
-  if (voice) u.voice = voice;
-  speechSynthesis.speak(u);
+  speak(`Number ${numberToWords(num)}`);
+}
+
+// iOS/Safari only allows speechSynthesis to start from a user gesture, and
+// treats cancel() as tearing down the whole speech session (making every later
+// speak() a silent no-op). So: prime once from a real gesture, and only cancel
+// when something is genuinely still talking.
+function primeSpeech() {
+  if (!window.speechSynthesis || S.speechPrimed) return;
+  try {
+    const u = new SpeechSynthesisUtterance(' ');
+    u.volume = 0;
+    speechSynthesis.speak(u);
+    // Latch only once the warm-up actually went through, so a failed first
+    // attempt can still be retried on the next interaction.
+    S.speechPrimed = true;
+  } catch (_) {}
 }
 
 function speak(text) {
-  if (!window.speechSynthesis) return;
-  speechSynthesis.cancel();
+  if (!window.speechSynthesis || !text) return;
   const u = new SpeechSynthesisUtterance(text);
   u.rate = 0.85; u.pitch = 1.05; u.volume = 1;
   const voice = pickVoice();
-  if (voice) u.voice = voice;
-  speechSynthesis.speak(u);
+  if (voice) {
+    u.voice = voice;
+    if (voice.lang) u.lang = voice.lang;
+  } else {
+    u.lang = 'en-IN';
+  }
+  try {
+    if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+  } catch (_) {}
+  try { speechSynthesis.speak(u); } catch (_) {}
 }
 
 // =====================================================
@@ -274,12 +414,17 @@ function speak(text) {
 // =====================================================
 
 function colRange(col, max) {
-  if (max <= 90) {
+  // Classic Tambola decade layout (1-9, 10-19, ... 80-90). A column can hold up
+  // to 3 rows on a ticket, and the decade split only gives the last column
+  // max-79 numbers - so it is only usable from 82 up.
+  if (max >= 82 && max <= 90) {
     const min = col === 0 ? 1 : col * 10;
     const end = col === 8 ? 90 : (col + 1) * 10 - 1;
     return { min, max: Math.min(end, max) };
   }
-  const size = Math.ceil(max / 9);
+  // Everything else (80-81 and 91-999): split evenly so all 9 columns always
+  // have at least 3 numbers to give. Also covers legacy saved rooms.
+  const size = Math.max(1, Math.ceil(max / 9));
   return { min: col * size + 1, max: Math.min((col + 1) * size, max) };
 }
 
@@ -309,9 +454,16 @@ function generateTicket(poolMax = 90) {
     for (let n = min; n <= maxC; n++) pool.push(n);
     const chosen = shuffle(pool).slice(0, rows.length).sort((a, b) => a - b);
     const sortedR = [...rows].sort((a, b) => a - b);
-    for (let i = 0; i < sortedR.length; i++) grid[sortedR[i]][col] = chosen[i];
+    for (let i = 0; i < sortedR.length; i++) {
+      // A column can hold fewer numbers than it has rows; leave the rest blank
+      // rather than writing undefined into the grid.
+      if (chosen[i] === undefined) break;
+      grid[sortedR[i]][col] = chosen[i];
+    }
   }
-  return grid;
+  // Carry the pool size so column headers always match this grid, even if the
+  // room's pool is changed mid-game.
+  return { grid, poolMax };
 }
 
 // =====================================================
@@ -371,7 +523,7 @@ function createRoom(hostName, roomName, poolMax, prizeIds, bestOf, entryFee, gam
   const code = genCode();
   const hostId = uid();
 
-  S.room = { code, name: roomName, hostId, poolMax, prizeIds, bestOf: parseInt(bestOf), entryFee: parseInt(entryFee), gameMode: gameMode || 'digital' };
+  S.room = { code, name: roomName, hostId, poolMax: clampPool(poolMax), prizeIds, bestOf: parseInt(bestOf), entryFee: parseInt(entryFee), gameMode: gameMode || 'digital' };
   S.players = [{ id: hostId, name: hostName, ticket: null, isHost: true, isLocal: true }];
   S.myPlayerId = hostId;
   S.currentRound = 0;
@@ -561,6 +713,7 @@ function startRound() {
   const r = S.room;
   S.drawn = [];
   S.pool = buildPool(r.poolMax);
+  S.completeQueued = false;
 
   // Build prize state for this round
   const roundPrizes = r.prizeIds.map(pid => {
@@ -657,6 +810,14 @@ function animateNumber(num) {
       ring.style.transition = 'box-shadow .6s ease';
       ring.style.boxShadow = '';
     }, 300);
+
+    // Expanding shockwave, removed once it has played out
+    if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      const ripple = document.createElement('span');
+      ripple.className = 'draw-ripple';
+      ring.appendChild(ripple);
+      setTimeout(() => ripple.remove(), 800);
+    }
   }
 
   // After ~2 seconds, switch from red (calling) to green (called)
@@ -678,9 +839,7 @@ function updateCurrentNumber() {
 // =====================================================
 
 function getSpeed() {
-  const val = parseInt(qs('#auto-speed')?.value, 10);
-  const sec = (!val || isNaN(val) || val < 1) ? 3 : Math.min(60, val);
-  return sec * 1000;
+  return clampInt(qs('#auto-speed')?.value, 1, 60, 3) * 1000;
 }
 
 function startAuto() {
@@ -731,6 +890,30 @@ function updateCountdown() {
 function toggleAuto() { S.timerTick ? stopAuto() : startAuto(); }
 
 // =====================================================
+// PAUSE / RESUME AROUND THE WINNER ANNOUNCEMENT
+// =====================================================
+
+// Called when a prize is awarded. Stops the auto-draw timer (if running) and
+// remembers that we were running, so the draw can pick back up afterwards.
+function pauseForWinner() {
+  S.pausedForWinner = !!S.timerTick;
+  if (S.timerTick) stopAuto();
+  updateCountdown();
+}
+
+// Called when the winner modal is dismissed, i.e. once the winner has been
+// announced. Restarts the draw only if we were the ones who paused it.
+function resumeAfterWinner() {
+  if (!S.pausedForWinner) return;
+  S.pausedForWinner = false;
+  if (S.screen !== 'game') return;
+  if (qs('.modal-overlay:not(.hidden)')) return;  // another modal is still up
+  if (S.timerTick) return;                        // already resumed
+  if (S.drawn.length >= (S.room ? S.room.poolMax : DEFAULT_POOL)) return;
+  startAuto();
+}
+
+// =====================================================
 // PRIZE MANAGEMENT
 // =====================================================
 
@@ -756,6 +939,10 @@ function awardPrize(prizeId, playerId) {
     S.scoreboard[playerId].coinsWon += S.room.entryFee * 2;
   }
 
+  // Hold the draw while the winner is being announced. If auto-draw was
+  // running we resume it once the winner modal is dismissed.
+  pauseForWinner();
+
   playWinner();
   const allNames = prize.winnerIds.map(id => {
     const w = S.players.find(pl => pl.id === id);
@@ -763,6 +950,7 @@ function awardPrize(prizeId, playerId) {
   }).join(', ');
   speak(`Winner! ${allNames} win${prize.winnerIds.length > 1 ? '' : 's'} ${prize.name}!`);
   showWinnerModal(allNames, prize.name, prize.icon, prize.wonAt);
+  celebrate();
 
   if (S.channel) {
     S.channel.postMessage({ type: 'prize-awarded', prizeId, playerId });
@@ -846,6 +1034,21 @@ function handleRemotePrizeRevoke(prizeId, playerId) {
 // PAPER MODE – CLOSE ROUND & REVEAL REMAINING NUMBERS
 // =====================================================
 
+// Credits the Full House winner's gamesWon exactly once per round. Both the
+// digital auto-complete and the paper-mode close path can reach this, so the
+// round carries its own `fhCredited` latch.
+function creditFullHouseWins(curRound) {
+  if (!curRound || curRound.fhCredited) return;
+  const fhPrize = curRound.prizes.find(p => p.id === 'full-house');
+  if (!fhPrize) return;
+  const winnerIds = fhPrize.winnerIds || (fhPrize.winnerId ? [fhPrize.winnerId] : []);
+  if (!winnerIds.length) return;
+  curRound.fhCredited = true;
+  winnerIds.forEach(id => {
+    if (S.scoreboard[id]) S.scoreboard[id].gamesWon++;
+  });
+}
+
 function closePaperRoundAndReveal() {
   const curRound = S.rounds.find(rn => rn.roundNo === S.currentRound);
   if (!curRound) return;
@@ -867,13 +1070,7 @@ function closePaperRoundAndReveal() {
   curRound.remainingRevealed = remainingSequence; // ponytail: simple array store on round
 
   // Mark full house winners on scoreboard if not already marked
-  const fhPrize = curRound.prizes.find(p => p.id === 'full-house');
-  if (fhPrize) {
-    const winnerIds = fhPrize.winnerIds || (fhPrize.winnerId ? [fhPrize.winnerId] : []);
-    winnerIds.forEach(id => {
-      if (S.scoreboard[id]) S.scoreboard[id].gamesWon++;
-    });
-  }
+  creditFullHouseWins(curRound);
 
   save();
   playWinner();
@@ -941,16 +1138,11 @@ function showRemainingSequenceModal(remainingSeq, startCall) {
 
 function completeRound() {
   const curRound = S.rounds.find(rn => rn.roundNo === S.currentRound);
-  if (curRound) curRound.completed = true;
+  if (!curRound || curRound.completed) return;
+  curRound.completed = true;
 
   // Mark round winners in scoreboard (full house winners)
-  const fhPrize = curRound.prizes.find(p => p.id === 'full-house');
-  if (fhPrize) {
-    const winnerIds = fhPrize.winnerIds || (fhPrize.winnerId ? [fhPrize.winnerId] : []);
-    winnerIds.forEach(id => {
-      if (S.scoreboard[id]) S.scoreboard[id].gamesWon++;
-    });
-  }
+  creditFullHouseWins(curRound);
 
   save();
 
@@ -980,10 +1172,13 @@ function nextRound() {
 function resetRound() {
   S.drawn = [];
   S.pool = buildPool(S.room.poolMax);
+  S.completeQueued = false;
   const curRound = S.rounds.find(rn => rn.roundNo === S.currentRound);
   if (curRound) {
     curRound.drawn = [];
     curRound.remainingRevealed = null;
+    curRound.completed = false;
+    curRound.fhCredited = false;
     curRound.prizes.forEach(p => { p.winnerId = null; p.winnerIds = []; p.wonAt = null; });
   }
   save();
@@ -1010,8 +1205,9 @@ function renderBoard() {
   const revealedSet = new Set(curRound?.remainingRevealed || []);
   const board = qs('#number-board');
 
-  // Calculate optimal columns: prefer 10 for ≤100, 8 for larger
-  const cols = max <= 100 ? 10 : 8;
+  // Column count scales with the pool so a 999-number board doesn't turn into
+  // an 8-column ribbon the host has to scroll forever.
+  const cols = max <= 100 ? 10 : (max <= 300 ? 12 : 15);
   board.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
 
   board.innerHTML = '';
@@ -1033,7 +1229,19 @@ function renderBoard() {
   // Sync pool preset dropdown with room value
   const preset = qs('#pool-preset');
   if (preset && S.room) {
-    preset.value = S.room.poolMax;
+    // A custom pool has no matching <option>, which would make the select show
+    // the wrong pool. Swap in a one-off option for it, and drop the previous
+    // one so the dropdown never offers a stale pool.
+    preset.querySelectorAll('option[data-custom]').forEach(o => o.remove());
+    const val = String(S.room.poolMax);
+    if (![...preset.options].some(o => o.value === val)) {
+      const opt = document.createElement('option');
+      opt.value = val;
+      opt.textContent = `1 – ${val}`;
+      opt.dataset.custom = '1';
+      preset.appendChild(opt);
+    }
+    preset.value = val;
   }
 }
 
@@ -1059,16 +1267,22 @@ function updateStats() {
   qs('#progress-text').textContent = `${called} / ${max} drawn`;
   qs('#progress-fill').style.width = `${pct}%`;
 
-  // Auto-complete round when all numbers drawn
+  // Auto-complete round when all numbers drawn. updateStats() runs from several
+  // paths (draw, renderAll, paper close), so queue at most one completion.
   if (called >= max) {
     stopAuto();
-    setTimeout(() => completeRound(), 1200);
+    if (!S.completeQueued) {
+      S.completeQueued = true;
+      setTimeout(() => completeRound(), 1200);
+    }
   }
 }
 
 // =====================================================
-// UI – PREV STRIP (Last 10 Numbers Called)
+// UI – PREV STRIP (Last N Numbers Called)
 // =====================================================
+
+const RECENT_COUNT = 20;
 
 function renderPrevStrip() {
   const strip = qs('#prev-strip');
@@ -1076,16 +1290,16 @@ function renderPrevStrip() {
   if (!strip) return;
 
   const totalCalled = S.drawn.length;
-  if (countBadge) countBadge.textContent = Math.min(10, totalCalled);
+  if (countBadge) countBadge.textContent = Math.min(RECENT_COUNT, totalCalled);
 
   if (!totalCalled) {
     strip.innerHTML = '<span class="hint-text" style="font-size:12px;margin:auto">Numbers will appear here as they are called</span>';
     return;
   }
 
-  // Display the last 10 numbers in reverse chronological order (latest call first)
-  const last10 = S.drawn.slice(-10).reverse();
-  strip.innerHTML = last10.map((num, idx) => {
+  // Display the most recent numbers in reverse chronological order (latest first)
+  const recent = S.drawn.slice(-RECENT_COUNT).reverse();
+  strip.innerHTML = recent.map((num, idx) => {
     const callNo = totalCalled - idx;
     const isLatest = idx === 0;
     return `
@@ -1260,19 +1474,19 @@ function renderHistory() {
 function showTicket(playerId) {
   const p = S.players.find(x => x.id === playerId);
   if (!p || !p.ticket) return;
-  const max = S.room ? S.room.poolMax : 90;
+  // Use the pool the ticket was generated for, not the room's current pool
+  const max = p.ticket.poolMax ?? (S.room ? S.room.poolMax : 90);
   qs('#ticket-title').textContent = `${p.name}'s Ticket`;
-  qs('#ticket-display').innerHTML = buildTicketHTML(p.ticket, S.drawn, max);
+  qs('#ticket-display').innerHTML = buildTicketHTML(p.ticket.grid, S.drawn, max);
   openModal('modal-ticket');
 }
 
 function buildTicketHTML(grid, drawn, max) {
   const drawnSet = new Set(drawn);
   let html = '<table class="ticket-table"><thead><tr>';
-  // Column headers (1-10, 11-20, etc.)
+  // Column headers derived from colRange so they always match the real allocation
   for (let c = 0; c < 9; c++) {
-    const lo = c === 0 ? 1 : c * 10;
-    const hi = c === 8 ? max : Math.min((c + 1) * 10 - 1, max);
+    const { min: lo, max: hi } = colRange(c, max);
     html += `<th class="ticket-th">${lo}–${hi}</th>`;
   }
   html += '</tr></thead><tbody>';
@@ -1298,7 +1512,12 @@ function buildTicketHTML(grid, drawn, max) {
 // =====================================================
 
 function openModal(id) { qs(`#${id}`).classList.remove('hidden'); }
-function closeModal(id) { qs(`#${id}`).classList.add('hidden'); }
+function closeModal(id) {
+  const el = qs(`#${id}`);
+  if (el) el.classList.add('hidden');
+  // Dismissing the winner announcement is the signal to resume the draw
+  if (id === 'modal-winner') resumeAfterWinner();
+}
 
 function showWinnerModal(playerName, prizeName, icon, callNo) {
   qs('#winner-burst').textContent = icon || '🎉';
@@ -1491,6 +1710,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const versionEl = qs('#landing-version');
   if (versionEl) versionEl.textContent = APP_VERSION;
 
+  // Keep the "Last N Numbers Called" label in sync with RECENT_COUNT
+  const recentLabel = qs('#recent-count-label');
+  if (recentLabel) recentLabel.textContent = String(RECENT_COUNT);
+
   // ── Theme toggles ──
   qsa('.theme-toggle').forEach(btn => btn.addEventListener('click', toggleTheme));
 
@@ -1537,8 +1760,7 @@ document.addEventListener('DOMContentLoaded', () => {
     openModal('modal-invite');
     // Auto-copy
     const text = `Join my Housie game!\nCode: ${S.room.code}\nLink: ${url}`;
-    navigator.clipboard?.writeText(text).then(() => toast('Link & code copied!'))
-      .catch(() => {});
+    copyText(text).then(ok => toast(ok ? 'Link & code copied!' : `Code: ${S.room.code}`));
   }
   qs('#btn-share-game')?.addEventListener('click', openInviteModal);
   qs('#btn-lobby-invite')?.addEventListener('click', openInviteModal);
@@ -1546,7 +1768,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!S.room) return;
     const url = `${location.origin}${location.pathname}#room=${S.room.code}`;
     const text = `Join my Housie game!\nCode: ${S.room.code}\nLink: ${url}`;
-    navigator.clipboard?.writeText(text).then(() => toast('Copied!'));
+    copyText(text).then(ok => toast(ok ? 'Copied!' : `Code: ${S.room.code}`));
   });
 
   // ── Landing buttons ──
@@ -1572,13 +1794,13 @@ document.addEventListener('DOMContentLoaded', () => {
   qs('#btn-do-create').addEventListener('click', () => {
     const hostName = qs('#cr-host-name').value.trim();
     const roomName = qs('#cr-room-name').value.trim() || `Housie Room`;
-    const poolV = qs('#cr-pool').value || '90';
+    const poolV = qs('#cr-pool').value || String(DEFAULT_POOL);
     const pool = poolV === 'custom'
-      ? Math.max(10, parseInt(qs('#cr-custom-pool').value, 10) || 90)
-      : parseInt(poolV, 10);
+      ? clampPool(qs('#cr-custom-pool').value)
+      : clampPool(poolV);
     const prizeIds = [...qsa('#cr-prizes input[type=checkbox]:checked')].map(el => el.value);
-    const bestOf = Math.max(1, parseInt(qs('#cr-best-of').value, 10) || 5);
-    const entryFee = qs('#cr-entry-fee').value;
+    const bestOf = clampInt(qs('#cr-best-of').value, 1, 99, 5);
+    const entryFee = clampInt(qs('#cr-entry-fee').value, 0, 100000, 1);
     const gameMode = qs('.mode-btn.active')?.dataset.mode || 'digital';
 
     if (!hostName) { toast('Enter your name'); return; }
@@ -1633,12 +1855,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── Pool preset ──
   qs('#pool-preset')?.addEventListener('change', e => {
-    if (S.room) {
-      S.room.poolMax = parseInt(e.target.value, 10);
-      S.pool = buildPool(S.room.poolMax, S.drawn);
-      save();
-      renderAll();
+    if (!S.room) return;
+    const next = clampPool(e.target.value);
+    if (next === S.room.poolMax) return;
+    // Existing tickets were generated against the old pool, so their column
+    // layout no longer matches. Make the host decide rather than silently
+    // producing mismatched tickets.
+    const hasTickets = S.players.some(p => p.ticket);
+    if (hasTickets && !confirm('Change the number pool? Existing tickets were built for the current pool and will not match the new column layout.')) {
+      e.target.value = String(S.room.poolMax);
+      return;
     }
+    S.room.poolMax = next;
+    S.pool = buildPool(next, S.drawn);
+    save();
+    renderAll();
+    toast(`Pool set to 1–${next}`);
   });
 
   // ── Add Player ──
@@ -1669,11 +1901,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── Auto-speed live update ──
   qs('#auto-speed')?.addEventListener('input', () => {
     if (S.timerTick) {
-      const sec = Math.max(1, parseInt(qs('#auto-speed').value, 10) || 3);
+      const sec = clampInt(qs('#auto-speed').value, 1, 60, 3);
       S.timerRemain = Math.min(S.timerRemain, sec);
       updateCountdown();
     }
   });
+
+  // ── Numeric fields: same rules everywhere ──
+  bindNumberField(qs('#cr-custom-pool'), { min: MIN_POOL, max: MAX_POOL, fallback: DEFAULT_POOL });
+  bindNumberField(qs('#cr-best-of'),     { min: 1, max: 99, fallback: 5 });
+  bindNumberField(qs('#cr-entry-fee'),   { min: 0, max: 100000, fallback: 1 });
+  bindNumberField(qs('#auto-speed'),     { min: 1, max: 60, fallback: 3 });
 
   // ── Revealed Sequence Modal Buttons ──
   qs('#btn-copy-revealed-seq')?.addEventListener('click', () => {
@@ -1700,7 +1938,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('click', e => {
     const t = e.target.closest('[data-close]');
     if (t) closeModal(t.dataset.close);
-    if (e.target.classList.contains('modal-overlay')) {
+    if (e.target.classList?.contains('modal-overlay')) {
       const modal = e.target.querySelector('.modal');
       if (!modal || !modal.contains(e.target)) closeModal(e.target.id);
     }
@@ -1709,16 +1947,26 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── Keyboard shortcuts ──
   document.addEventListener('keydown', e => {
     if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+
+    if (e.key === 'Escape') {
+      // closeModal() clears pausedForWinner when it resumes a paused draw, so
+      // remember it up front or we would stop the draw we just restarted.
+      const resumingWinner = S.pausedForWinner;
+      qsa('.modal-overlay:not(.hidden)').forEach(m => closeModal(m.id));
+      qs('#settings-panel')?.classList.add('hidden');
+      setSettingsExpanded(false);
+      // A winner pause is resumed by closeModal; otherwise Escape stops the draw
+      if (!resumingWinner) stopAuto();
+      return;
+    }
+
+    // Never fire game keys while a modal is open (e.g. Space behind the winner)
+    if (qs('.modal-overlay:not(.hidden)')) return;
+
     if (e.code === 'Space' && S.screen === 'game') { e.preventDefault(); drawNumber(); }
     if ((e.key === 'a' || e.key === 'A') && S.screen === 'game') toggleAuto();
     if ((e.key === 'r' || e.key === 'R') && S.screen === 'game') {
       if (confirm('Reset this round? All drawn numbers will be cleared.')) resetRound();
-    }
-    if (e.key === 'Escape') {
-      qsa('.modal-overlay:not(.hidden)').forEach(m => m.classList.add('hidden'));
-      qs('#settings-panel')?.classList.add('hidden');
-      setSettingsExpanded(false);
-      stopAuto();
     }
   });
 
@@ -1749,8 +1997,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // ── Warm up audio ──
-  document.addEventListener('pointerdown', () => getAudioCtx(), { once: true });
+  // ── Warm up audio + speech ──
+  // Both the Web Audio context and speechSynthesis are gated behind a user
+  // gesture on iOS/Safari and Chrome. Unlock them on the very first
+  // interaction, whichever flavour of it the device sends. touchstart is kept
+  // alongside pointerdown for older iOS Safari.
+  const warmUp = () => { getAudioCtx(); primeSpeech(); };
+  document.addEventListener('pointerdown', warmUp, { once: true });
+  document.addEventListener('touchstart', warmUp, { once: true, passive: true });
+  document.addEventListener('keydown', warmUp, { once: true });
 });
 
 // =====================================================

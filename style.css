@@ -76,6 +76,20 @@ body {
   height: 100dvh;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
+  /* Kill the 300ms tap delay and double-tap zoom on touch devices without
+     disabling pinch-zoom accessibility (unlike user-scalable=no). */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  /* Respect notches / home indicators on iOS */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Momentum scrolling inside the panel columns on iOS */
+.sidebar-left, .sidebar-right, .main-area,
+.game-list, .player-list, .prize-list,
+.modal, .form-card, .lobby-card, .revealed-grid-container, .sb-games-list {
+  -webkit-overflow-scrolling: touch;
 }
 
 :focus-visible {
@@ -275,7 +289,7 @@ body {
   display: flex; align-items: center; gap: 10px;
   padding: 0 14px;
   background: var(--bg-panel);
-  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%);
   border-bottom: 1px solid var(--bdr);
 }
 .topbar.hidden { display: none !important; }
@@ -325,7 +339,7 @@ body {
   position: fixed; top: var(--topbar-h); left: 50%; transform: translateX(-50%);
   z-index: 199; background: var(--bg-panel-solid); border: 1px solid var(--bdr-hi);
   border-radius: 0 0 var(--r-lg) var(--r-lg); padding: 10px 16px;
-  box-shadow: 0 12px 40px rgba(0,0,0,.4); backdrop-filter: blur(12px);
+  box-shadow: 0 12px 40px rgba(0,0,0,.4); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
 }
 .settings-panel.hidden { display: none !important; }
 .settings-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: center; }
@@ -348,7 +362,7 @@ body {
 .sidebar-left {
   display: flex; flex-direction: column;
   background: var(--bg-panel);
-  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
   border-right: 1px solid var(--bdr);
   overflow: hidden;
 }
@@ -483,22 +497,24 @@ body {
   text-transform: uppercase; letter-spacing: 1px;
 }
 .prev-strip {
-  display: flex; align-items: center; justify-content: center; gap: 6px;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
   flex-wrap: wrap; margin: 2px 0; min-height: 48px;
   padding: 5px 8px;
   background: rgba(0, 0, 0, 0.22);
   border-radius: var(--r);
   border: 1px solid var(--bdr);
+  -webkit-overflow-scrolling: touch;
 }
 .prev-badge {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  min-width: 38px; height: 42px; border-radius: 8px;
-  padding: 2px 5px;
+  min-width: 34px; height: 38px; border-radius: 8px;
+  padding: 2px 4px;
   background: var(--surf-2);
   border: 1.5px solid rgba(139,92,246,.3);
   box-shadow: 0 2px 5px rgba(0,0,0,.3);
   animation: strip-pop .35s cubic-bezier(.175,.885,.32,1.275);
   transition: transform .2s, border-color .2s;
+  flex: 0 0 auto;
 }
 .prev-badge:hover {
   transform: translateY(-2px);
@@ -570,14 +586,14 @@ body {
   font-size: 12px; font-weight: 700; color: var(--purple);
 }
 .number-board {
-  display: grid; gap: 2px;
+  display: grid; gap: 3px;
   grid-template-columns: repeat(9, 1fr);
 }
 .board-cell {
   display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums;
-  border-radius: 4px;
-  padding: 5px 0;
+  font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums;
+  border-radius: 6px;
+  padding: 10px 0;
   background: var(--surf-1); border: 1px solid var(--bdr);
   color: var(--t3); transition: all .3s var(--ease); cursor: default;
 }
@@ -608,7 +624,7 @@ body {
 .sidebar-right {
   display: flex; flex-direction: column;
   background: var(--bg-panel);
-  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
   border-left: 1px solid var(--bdr);
   overflow-y: auto; overflow-x: hidden;
 }
@@ -623,7 +639,7 @@ body {
   color: var(--t3); text-transform: uppercase;
   border-bottom: 1px solid var(--bdr);
   position: sticky; top: 0; z-index: 5;
-  background: var(--bg-panel); backdrop-filter: blur(8px);
+  background: var(--bg-panel); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
 }
 
 .player-list { padding: 6px; display: flex; flex-direction: column; gap: 4px; }
@@ -874,7 +890,7 @@ body {
    ============================================================ */
 .modal-overlay {
   position: fixed; inset: 0; z-index: 500;
-  background: rgba(0,0,0,.6); backdrop-filter: blur(6px);
+  background: rgba(0,0,0,.6); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   display: flex; align-items: center; justify-content: center; padding: 16px;
 }
 .modal-overlay.hidden { display: none !important; }
@@ -1135,6 +1151,100 @@ body {
 [data-theme="light"] .landing-ball::after { border-color: rgba(139,92,246,.3); }
 [data-theme="light"] .announce-card { box-shadow: 0 10px 30px rgba(0,0,0,.08); }
 
+/* ============================================================
+   MOTION & EFFECTS
+   ============================================================ */
+
+/* Expanding shockwave when a number is called */
+.draw-ripple {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--purple);
+  pointer-events: none;
+  animation: draw-ripple .75s cubic-bezier(.2,.7,.3,1) forwards;
+}
+@keyframes draw-ripple {
+  0%   { transform: scale(.85); opacity: .85; }
+  100% { transform: scale(1.75); opacity: 0; }
+}
+.number-ring { position: relative; }
+
+/* Draw button throb while auto-draw is armed */
+@keyframes armed-glow {
+  0%,100% { box-shadow: 0 0 0 rgba(6,182,212,0); }
+  50%     { box-shadow: 0 0 18px rgba(6,182,212,.55); }
+}
+.btn-cyan.active { animation: armed-glow 1.6s ease-in-out infinite; }
+
+/* Countdown bar pulse as a call approaches */
+@keyframes countdown-hot {
+  0%,100% { box-shadow: 0 0 0 rgba(139,92,246,0); }
+  50%     { box-shadow: 0 0 12px rgba(139,92,246,.7); }
+}
+.countdown-bar.active .countdown-fill { animation: countdown-hot 1s ease-in-out infinite; }
+
+/* Prize claim: winner tag lands with a bounce */
+@keyframes tag-drop {
+  0%   { transform: scale(.4) translateY(-14px); opacity: 0; }
+  60%  { transform: scale(1.18) translateY(2px); opacity: 1; }
+  100% { transform: scale(1) translateY(0); }
+}
+.winner-tag { display: inline-flex; align-items: center; gap: 4px; animation: tag-drop .45s cubic-bezier(.175,.885,.32,1.275); }
+
+/* Prize card lights up when claimed */
+@keyframes prize-lock {
+  0%   { box-shadow: 0 0 0 rgba(16,185,129,0); }
+  40%  { box-shadow: 0 0 26px rgba(16,185,129,.65); }
+  100% { box-shadow: 0 0 0 rgba(16,185,129,0); }
+}
+.prize-card.won { animation: prize-lock .8s var(--ease); }
+
+/* Scoreboard rows cascade in */
+@keyframes row-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.sb-mini-row { animation: row-in .3s var(--ease) backwards; }
+.sb-mini-row:nth-child(1) { animation-delay: .00s; }
+.sb-mini-row:nth-child(2) { animation-delay: .04s; }
+.sb-mini-row:nth-child(3) { animation-delay: .08s; }
+.sb-mini-row:nth-child(4) { animation-delay: .12s; }
+.sb-mini-row:nth-child(5) { animation-delay: .16s; }
+.sb-mini-row:nth-child(n+6) { animation-delay: .20s; }
+
+/* Winner modal pops in */
+@keyframes winner-in {
+  0%   { transform: scale(.7); opacity: 0; }
+  55%  { transform: scale(1.06); opacity: 1; }
+  100% { transform: scale(1); }
+}
+.modal-winner { animation: winner-in .5s cubic-bezier(.175,.885,.32,1.275); }
+
+/* Confetti (spawned by celebrate()) */
+.confetti-layer {
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 950;
+  overflow: hidden;
+}
+.confetti-bit {
+  position: absolute;
+  top: -14px; left: var(--x, 50vw);
+  width: 8px; height: 13px;
+  opacity: 0;
+  animation: confetti-fall var(--dur, 2s) var(--delay, 0s) cubic-bezier(.25,.6,.4,1) forwards;
+}
+@keyframes confetti-fall {
+  0%   { transform: translate3d(0,0,0) rotate(0deg); opacity: 1; }
+  100% { transform: translate3d(var(--dx,0),105vh,0) rotate(var(--rot,360deg)); opacity: 0; }
+}
+
+/* Field helper text */
+.field-hint {
+  font-size: 10px; color: var(--t3);
+  margin-top: 5px; line-height: 1.4;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: .01ms !important;
@@ -1143,6 +1253,8 @@ body {
     scroll-behavior: auto !important;
   }
   .orb, .landing-ball, .landing-ball::after, .number-ring::before { animation: none !important; }
+  .confetti-layer { display: none !important; }
+  .draw-ripple { display: none !important; }
 }
 
 /* ============================================================
@@ -1218,17 +1330,39 @@ body {
     cursor: pointer;
   }
 
-  .main-area { padding: 6px; gap: 4px; }
+  .main-area { padding: 6px 6px 46px; gap: 4px; }
   .announce-card { padding: 8px 8px 6px; }
   .number-ring { width: 85px; height: 85px; }
   .number-big { font-size: 40px; }
-  .number-board { gap: 1px; }
-  .board-cell { font-size: 8px; border-radius: 3px; padding: 3px 0; }
+  .number-board { gap: 2px; }
+  .board-cell { font-size: 11px; border-radius: 4px; padding: 7px 0; }
+
+  /* 20 recent numbers is too many to wrap on a phone - scroll them sideways
+     instead of eating the whole screen. */
+  .prev-strip {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+  }
+  .prev-badge { min-width: 32px; height: 34px; scroll-snap-align: start; }
+  .prev-badge .prev-num { font-size: 14px; }
+  .prev-badge .prev-seq { font-size: 7px; }
+
+  /* iOS Safari zooms the viewport when focusing an input whose font-size is
+     under 16px, which then breaks the fixed-position layout. */
+  .select, .field-input, .input-sm, .auto-speed-input { font-size: 16px; }
+  .code-input { font-size: 24px !important; }
+
+  /* Bigger touch targets for the topbar icon buttons */
+  .topbar-right .btn-icon { width: 34px; height: 34px; font-size: 13px; }
+  .topbar-right .theme-toggle { width: 32px; height: 32px; font-size: 14px; }
 
   /* Forms */
   .form-card, .lobby-card, .scoreboard-card {
     max-width: 100%; margin: 10px; padding: 20px;
     max-height: calc(100vh - 20px);
+    max-height: calc(100dvh - 20px);
   }
   .field-row { flex-direction: column; gap: 0; }
   .code-input { font-size: 24px !important; letter-spacing: 6px !important; }
@@ -1248,7 +1382,9 @@ body {
 
   .number-ring { width: 70px; height: 70px; }
   .number-big { font-size: 34px; }
-  .board-cell { font-size: 7px; padding: 3px 1px; }
+  .board-cell { font-size: 10px; padding: 6px 0; }
+  .prev-badge { min-width: 30px; height: 32px; }
+  .prev-badge .prev-num { font-size: 13px; }
 
   .landing-emoji { font-size: 36px; }
   .landing-title { font-size: 28px; letter-spacing: 2px; }
