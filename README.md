@@ -93,10 +93,13 @@ Multiple winners per prize are supported (especially useful in Paper mode).
 
 | Action | Behavior |
 |--------|----------|
-| **Refresh browser** | Session is **restored** from localStorage — you continue where you left off |
+| **Refresh browser** | Session is **restored** from localStorage + this tab's identity from sessionStorage — you continue where you left off |
 | **🏠 Home button** (topbar) | Clears session, returns to landing page (requires confirmation) |
-| **Open invite link** | Redirects to Join Room screen with code pre-filled |
+| **Open invite link** | Takes priority over session restore and opens Join Room with the code pre-filled |
+| **Open a new tab** | Shows a **Rejoin** banner on the landing page; Rejoin resumes the room, or use Join Room to join as an extra player |
 | **New game** | Leave current room via 🏠, then create a new room from landing |
+
+> Each tab is its own player: the player identity lives in `sessionStorage`, while the room, players and rounds live in `localStorage`. That means two tabs can join the same room as different players, and refreshing a tab still restores that tab's player.
 
 ---
 
@@ -147,7 +150,22 @@ Simply serve the 4 files (`index.html`, `style.css`, `app.js`, `.nojekyll`) from
 
 ## Changelog
 
-### v2.2 (Latest)
+### v2.3 (Latest)
+- 👥 **Per-tab player identity** — `myPlayerId` moved to `sessionStorage`, so multiple tabs are distinct players while a refresh still restores the session
+- 🔗 **Invite links now win over session restore** — opening a shared link always opens Join Room; the hash is cleared after create/join so refreshing resumes instead of reopening the form
+- 💰 **Scoring fixes** — Full House wins are credited the moment the prize is awarded (not only at round completion), coins/wins are persisted before rendering, and resetting a round rolls back the coins and wins it added
+- 💵 Free games (entry fee `0`) no longer get charged phantom coins when a prize is revoked
+- 🎯 **Rejoin banner** on the landing page when a room already exists on the device but this tab has no identity; Rejoin reclaims the host so a room can never get stuck without someone able to start the game
+- 🏆 **Scoreboard no longer kills auto-draw** — opening it pauses the draw and closing it resumes
+- 🔄 **Round sync** — starting, advancing and resetting rounds now broadcasts full state to other tabs; remote pools stay in step with the drawing tab
+- 💺 Prize awards/revokes and round completion now refresh the player list and mini scoreboard immediately
+- ✅ Confirmation prompt when starting a new round while the current one is still in progress
+- 🐛 Fixed `#landing-version` missing its `id` (version label never updated)
+- 🐛 Clamped progress stats (no negative remaining / >100%), added clipboard fallback for the revealed-sequence copy button
+- 🎨 Light-mode fix for the recent-calls strip, neutral Home button styling, rejoin card styling
+- 🧹 Removed dead `renderHistory()` code and a duplicate Add Player listener
+
+### v2.2
 - 🎨 UI polish for release: custom `favicon.svg`, Open Graph + `theme-color` meta tags
 - 🏠 Refreshed landing hero — animated billiard-ball logo ring + feature chips
 - 🔘 Consistent circular icon buttons in the topbar with proper `aria-label`s

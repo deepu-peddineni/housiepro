@@ -46,7 +46,7 @@ function clampInt(n, min, max, fallback) {
   return Math.min(max, Math.max(min, v));
 }
 
-const APP_VERSION = 'v2.2';
+const APP_VERSION = 'v2.3';
 
 // =====================================================
 // STATE
@@ -223,12 +223,15 @@ function save() {
   try {
     localStorage.setItem('hp-room', JSON.stringify(S.room));
     localStorage.setItem('hp-players', JSON.stringify(S.players));
-    localStorage.setItem('hp-myid', S.myPlayerId || '');
     localStorage.setItem('hp-rounds', JSON.stringify(S.rounds));
     localStorage.setItem('hp-scoreboard', JSON.stringify(S.scoreboard));
     localStorage.setItem('hp-currentRound', String(S.currentRound));
     localStorage.setItem('hp-drawn', JSON.stringify(S.drawn));
     localStorage.setItem('hp-theme', S.theme);
+    // The player id is per-tab: localStorage is shared between tabs, so storing
+    // it there made every tab believe it was the same (host) player. sessionStorage
+    // keeps each tab a distinct player while still surviving a refresh.
+    sessionStorage.setItem('hp-myid', S.myPlayerId || '');
     if (S.voiceIndex !== undefined) localStorage.setItem('hp-voice', String(S.voiceIndex));
   } catch (e) {}
 }
@@ -237,7 +240,22 @@ function load() {
   try {
     S.room = JSON.parse(localStorage.getItem('hp-room')) || null;
     S.players = JSON.parse(localStorage.getItem('hp-players')) || [];
-    S.myPlayerId = localStorage.getItem('hp-myid') || null;
+
+    // Identity is per-tab. v2.2 kept it in localStorage (shared by every tab),
+    // which made all tabs think they were the same player. Migrate that value
+    // once for the tab that upgrades, then delete the shared key.
+    let myId = sessionStorage.getItem('hp-myid');
+    if (!myId) {
+      const legacyId = localStorage.getItem('hp-myid');
+      if (legacyId) {
+        myId = legacyId;
+        sessionStorage.setItem('hp-myid', legacyId);
+      }
+    }
+    localStorage.removeItem('hp-myid');
+    // Never trust an id that is not actually a player in this room.
+    S.myPlayerId = myId && S.players.some(p => p.id === myId) ? myId : null;
+
     S.rounds = JSON.parse(localStorage.getItem('hp-rounds')) || [];
     S.scoreboard = JSON.parse(localStorage.getItem('hp-scoreboard')) || {};
     S.currentRound = parseInt(localStorage.getItem('hp-currentRound') || '0', 10);
@@ -248,6 +266,8 @@ function load() {
     // Migrate legacy bare-grid tickets to { grid, poolMax }
     S.players.forEach(p => {
       if (Array.isArray(p.ticket)) p.ticket = { grid: p.ticket, poolMax: (S.room && S.room.poolMax) || 90 };
+      // "Local" means "this tab's player", not "was created on this device".
+      p.isLocal = p.id === S.myPlayerId;
     });
   } catch (e) {
     S.room = null; S.players = []; S.rounds = []; S.scoreboard = {};
@@ -256,11 +276,15 @@ function load() {
 
 function clearSession() {
   stopAuto();
+  S.pausedForWinner = false;
+  S.completeQueued = false;
   if (S.channel) { S.channel.close(); S.channel = null; }
   const keys = ['hp-room','hp-players','hp-myid','hp-rounds','hp-scoreboard','hp-currentRound','hp-drawn'];
   keys.forEach(k => localStorage.removeItem(k));
+  sessionStorage.removeItem('hp-myid');
   S.room = null; S.players = []; S.myPlayerId = null;
   S.currentRound = 0; S.rounds = []; S.drawn = []; S.scoreboard = {};
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   showScreen('landing');
 }
 
@@ -491,11 +515,41 @@ function setSettingsExpanded(expanded) {
   if (tgl) tgl.setAttribute('aria-expanded', String(expanded));
 }
 
+// Shows a "room in progress" card on the landing screen when a room exists in
+// storage but this tab has no identity yet (e.g. a freshly opened tab).
+function updateLandingResume() {
+  const wrap = qs('#landing-resume');
+  if (!wrap) return;
+  if (S.room && !S.myPlayerId) {
+    const codeEl = qs('#resume-room-code');
+    if (codeEl) codeEl.textContent = S.room.code;
+    wrap.classList.remove('hidden');
+  } else {
+    wrap.classList.add('hidden');
+  }
+}
+
+// Reopens the saved room for this tab: the game screen if a round is running,
+// otherwise the lobby.
+function resumeSavedRoom() {
+  if (!S.room) return false;
+  initChannel();
+  if (S.currentRound > 0 && S.rounds.length) {
+    showScreen('game');
+    S.pool = buildPool(S.room.poolMax, S.drawn);
+    renderAll();
+  } else {
+    showLobby();
+  }
+  return true;
+}
+
 function showScreen(name) {
   S.screen = name;
   qsa('.screen').forEach(s => s.classList.add('hidden'));
   const el = qs(`#screen-${name}`);
   if (el) el.classList.remove('hidden');
+  if (name === 'landing') updateLandingResume();
 
   const topbar = qs('#topbar');
   topbar.classList.toggle('hidden', !['game', 'lobby'].includes(name));
@@ -511,8 +565,11 @@ function showScreen(name) {
   const newRoundBtn = qs('#btn-new-round');
   if (newRoundBtn) newRoundBtn.classList.toggle('hidden', name !== 'game');
 
+  // Scoreboard and reset only make sense once a game is running.
   const sbBtn = qs('#btn-scoreboard');
-  if (sbBtn) sbBtn.classList.toggle('hidden', name === 'landing');
+  if (sbBtn) sbBtn.classList.toggle('hidden', name !== 'game');
+  const resetBtn = qs('#btn-reset');
+  if (resetBtn) resetBtn.classList.toggle('hidden', name !== 'game');
 }
 
 // =====================================================
@@ -542,6 +599,7 @@ function createRoom(hostName, roomName, poolMax, prizeIds, bestOf, entryFee, gam
   initChannel();
   save();
   broadcastState();
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   showLobby();
 }
 
@@ -568,6 +626,12 @@ function joinRoom(code, playerName) {
   initChannel();
   save();
   broadcastState();
+  if (S.channel) {
+    try { S.channel.postMessage({ type: 'player-joined', playerName }); } catch (_) {}
+  }
+  // Once joined, drop the invite hash so a refresh restores this tab's session
+  // instead of showing the join form again.
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   showLobby();
   return true;
 }
@@ -671,6 +735,8 @@ function handleBroadcast(msg) {
     if (msg.scoreboard) S.scoreboard = msg.scoreboard;
     if (msg.currentRound !== undefined) S.currentRound = msg.currentRound;
     if (msg.drawn) S.drawn = msg.drawn;
+    // Keep the remaining pool in step with the authoritative tab.
+    if (S.room) S.pool = buildPool(S.room.poolMax, S.drawn);
 
     // Update UI based on current screen
     if (S.screen === 'lobby') renderLobbyPlayers();
@@ -689,6 +755,9 @@ function handleBroadcast(msg) {
     handleRemotePrizeRevoke(msg.prizeId, msg.playerId);
   } else if (msg.type === 'paper-round-revealed') {
     handleRemotePaperReveal(msg);
+  } else if (msg.type === 'round-complete') {
+    // The state-sync that preceded this message has the completed round data.
+    if (S.screen === 'game' && !qs('.modal-overlay:not(.hidden)')) showRoundOverModal();
   }
 }
 
@@ -707,6 +776,9 @@ function startGame() {
 
   startRound();
 
+  // Send the full state first, then the screen switch. BroadcastChannel delivers
+  // in order, so remote tabs have the round data before the game screen opens.
+  broadcastState();
   if (S.channel) {
     S.channel.postMessage({ type: 'game-started', room: S.room });
   }
@@ -725,6 +797,7 @@ function startRound() {
   S.drawn = [];
   S.pool = buildPool(r.poolMax);
   S.completeQueued = false;
+  S.pausedForWinner = false;
 
   // Build prize state for this round
   const roundPrizes = r.prizeIds.map(pid => {
@@ -793,6 +866,10 @@ function drawNumber() {
 function handleRemoteDraw(num) {
   if (S.drawn.includes(num)) return;
   S.drawn.push(num);
+  // Keep this tab's remaining pool in step with the drawing tab, otherwise a
+  // later local draw here could pick a number that was already called.
+  const poolIdx = S.pool ? S.pool.indexOf(num) : -1;
+  if (poolIdx >= 0) S.pool.splice(poolIdx, 1);
   const curRound = S.rounds.find(rn => rn.roundNo === S.currentRound);
   if (curRound) curRound.drawn = [...S.drawn];
   save();
@@ -943,12 +1020,16 @@ function awardPrize(prizeId, playerId) {
   prize.winnerIds.push(playerId);
   prize.winnerId = prize.winnerIds[0]; // Keep first winner for compatibility
   prize.wonAt = S.drawn.length;
-  save();
 
-  // Update scoreboard
+  // Update scoreboard (before save so the award is persisted immediately)
   if (S.scoreboard[playerId]) {
     S.scoreboard[playerId].coinsWon += S.room.entryFee * 2;
   }
+  // Credit a Full House win right away instead of waiting for round completion;
+  // the host may advance the round manually.
+  if (prizeId === 'full-house') creditFullHouseForPlayer(curRound, playerId);
+
+  save();
 
   // Hold the draw while the winner is being announced. If auto-draw was
   // running we resume it once the winner modal is dismissed.
@@ -969,6 +1050,8 @@ function awardPrize(prizeId, playerId) {
 
   renderPrizes();
   renderRoundList();
+  renderPlayers();
+  renderMiniScoreboard();
 }
 
 function revokePrize(prizeId, playerId) {
@@ -992,12 +1075,10 @@ function revokePrize(prizeId, playerId) {
 
   // Rollback coins on scoreboard
   if (S.scoreboard[playerId]) {
-    const reward = (S.room?.entryFee || 1) * 2;
+    const reward = (S.room?.entryFee ?? 0) * 2;
     S.scoreboard[playerId].coinsWon = Math.max(0, (S.scoreboard[playerId].coinsWon || 0) - reward);
-    if (prizeId === 'full-house' && curRound.completed && S.scoreboard[playerId].gamesWon > 0) {
-      S.scoreboard[playerId].gamesWon--;
-    }
   }
+  if (prizeId === 'full-house') uncreditFullHouseForPlayer(curRound, playerId);
 
   save();
   toast(`Deselected ${player.name} for ${prize.name}`);
@@ -1008,6 +1089,7 @@ function revokePrize(prizeId, playerId) {
 
   renderPrizes();
   renderRoundList();
+  renderPlayers();
   renderMiniScoreboard();
 }
 
@@ -1029,15 +1111,14 @@ function handleRemotePrizeRevoke(prizeId, playerId) {
     prize.winnerId = prize.winnerIds[0];
   }
   if (S.scoreboard[playerId]) {
-    const reward = (S.room?.entryFee || 1) * 2;
+    const reward = (S.room?.entryFee ?? 0) * 2;
     S.scoreboard[playerId].coinsWon = Math.max(0, (S.scoreboard[playerId].coinsWon || 0) - reward);
-    if (prizeId === 'full-house' && curRound.completed && S.scoreboard[playerId].gamesWon > 0) {
-      S.scoreboard[playerId].gamesWon--;
-    }
   }
+  if (prizeId === 'full-house') uncreditFullHouseForPlayer(curRound, playerId);
   save();
   renderPrizes();
   renderRoundList();
+  renderPlayers();
   renderMiniScoreboard();
 }
 
@@ -1045,18 +1126,57 @@ function handleRemotePrizeRevoke(prizeId, playerId) {
 // PAPER MODE – CLOSE ROUND & REVEAL REMAINING NUMBERS
 // =====================================================
 
-// Credits the Full House winner's gamesWon exactly once per round. Both the
-// digital auto-complete and the paper-mode close path can reach this, so the
-// round carries its own `fhCredited` latch.
+// Credits a Full House win to one player exactly once per round. Awarding the
+// prize mid-round and completing the round can both reach this, so the round
+// tracks which players have already been credited in `fhCreditedIds`.
+function creditFullHouseForPlayer(curRound, playerId) {
+  if (!curRound || !playerId) return;
+  if (!Array.isArray(curRound.fhCreditedIds)) curRound.fhCreditedIds = [];
+  if (curRound.fhCreditedIds.includes(playerId)) return;
+  curRound.fhCreditedIds.push(playerId);
+  curRound.fhCredited = true;
+  if (S.scoreboard[playerId]) S.scoreboard[playerId].gamesWon++;
+}
+
+function uncreditFullHouseForPlayer(curRound, playerId) {
+  if (!curRound || !playerId || !Array.isArray(curRound.fhCreditedIds)) return;
+  if (!curRound.fhCreditedIds.includes(playerId)) return;
+  curRound.fhCreditedIds = curRound.fhCreditedIds.filter(id => id !== playerId);
+  if (S.scoreboard[playerId] && S.scoreboard[playerId].gamesWon > 0) {
+    S.scoreboard[playerId].gamesWon--;
+  }
+}
+
+// Credits any Full House winners that have not been credited yet. Both the
+// digital auto-complete and the paper-mode close path can reach this.
 function creditFullHouseWins(curRound) {
-  if (!curRound || curRound.fhCredited) return;
+  if (!curRound) return;
   const fhPrize = curRound.prizes.find(p => p.id === 'full-house');
   if (!fhPrize) return;
   const winnerIds = fhPrize.winnerIds || (fhPrize.winnerId ? [fhPrize.winnerId] : []);
   if (!winnerIds.length) return;
-  curRound.fhCredited = true;
-  winnerIds.forEach(id => {
-    if (S.scoreboard[id]) S.scoreboard[id].gamesWon++;
+  // Legacy rounds only stored a boolean latch; treat those winners as credited.
+  if (!Array.isArray(curRound.fhCreditedIds)) {
+    curRound.fhCreditedIds = curRound.fhCredited ? [...winnerIds] : [];
+  }
+  winnerIds.forEach(id => creditFullHouseForPlayer(curRound, id));
+}
+
+// Reverses every coin/win this round contributed to the scoreboard. Used when a
+// round is reset so the standings match the cleared prizes.
+function rollbackRoundScores(curRound) {
+  if (!curRound) return;
+  const reward = (S.room?.entryFee || 0) * 2;
+  curRound.prizes.forEach(p => {
+    const ids = p.winnerIds || (p.winnerId ? [p.winnerId] : []);
+    ids.forEach(id => {
+      if (S.scoreboard[id]) {
+        S.scoreboard[id].coinsWon = Math.max(0, (S.scoreboard[id].coinsWon || 0) - reward);
+      }
+    });
+  });
+  (curRound.fhCreditedIds || []).forEach(id => {
+    if (S.scoreboard[id] && S.scoreboard[id].gamesWon > 0) S.scoreboard[id].gamesWon--;
   });
 }
 
@@ -1157,11 +1277,19 @@ function completeRound() {
 
   save();
 
+  // Reflect the credited full-house win behind the round-over modal.
+  renderRoundList();
+  renderPlayers();
+  renderMiniScoreboard();
+
   // Show round over modal
   showRoundOverModal();
 
   if (S.channel) {
     S.channel.postMessage({ type: 'state-sync', room: S.room, players: S.players, rounds: S.rounds, scoreboard: S.scoreboard, currentRound: S.currentRound, drawn: S.drawn });
+    // Sent after the state-sync so the other tabs have the completed round data
+    // before they open the results modal.
+    S.channel.postMessage({ type: 'round-complete' });
   }
 }
 
@@ -1172,24 +1300,35 @@ function nextRound() {
     showScoreboard();
     return;
   }
+  const cur = S.rounds.find(rn => rn.roundNo === S.currentRound);
+  if (cur && !cur.completed && cur.drawn.length) {
+    if (!confirm('Start the next round? The current round is still in progress.')) return;
+  }
   S.currentRound++;
   stopAuto();
   startRound();
   closeModal('modal-round-over');
   showScreen('game');
   renderAll();
+  // Other tabs are already on the game screen; this advances their round too.
+  broadcastState();
 }
 
 function resetRound() {
   S.drawn = [];
   S.pool = buildPool(S.room.poolMax);
   S.completeQueued = false;
+  S.pausedForWinner = false;
+  stopAuto();
   const curRound = S.rounds.find(rn => rn.roundNo === S.currentRound);
   if (curRound) {
+    // Undo everything this round added to the standings before clearing it.
+    rollbackRoundScores(curRound);
     curRound.drawn = [];
     curRound.remainingRevealed = null;
     curRound.completed = false;
     curRound.fhCredited = false;
+    curRound.fhCreditedIds = [];
     curRound.prizes.forEach(p => { p.winnerId = null; p.winnerIds = []; p.wonAt = null; });
   }
   save();
@@ -1203,6 +1342,7 @@ function resetRound() {
   if (prevCount) prevCount.textContent = '0';
   qs('#progress-fill').style.width = '0%';
   renderAll();
+  broadcastState();
 }
 
 // =====================================================
@@ -1270,8 +1410,8 @@ function updateBoard(num) {
 function updateStats() {
   const max = S.room ? S.room.poolMax : 90;
   const called = S.drawn.length;
-  const remaining = max - called;
-  const pct = Math.round((called / max) * 100);
+  const remaining = Math.max(0, max - called);
+  const pct = Math.min(100, Math.round((called / max) * 100));
   qs('#stat-called').textContent = `Called: ${called}`;
   qs('#stat-remain').textContent = `Remaining: ${remaining}`;
   qs('#stat-pct').textContent = `${pct}%`;
@@ -1457,28 +1597,6 @@ function renderPrizes() {
 }
 
 // =====================================================
-// UI – HISTORY
-// =====================================================
-
-function renderHistory() {
-  const el = qs('#game-history');
-  const completed = S.rounds.filter(r => r.completed);
-  if (!completed.length) { el.innerHTML = '<p class="hint-text">No completed rounds yet</p>'; return; }
-
-  el.innerHTML = completed.map(rn => {
-    const winners = rn.prizes.filter(p => p.winnerId).map(p => {
-      const w = S.players.find(pl => pl.id === p.winnerId);
-      return `<div class="hist-prize">${p.icon} ${p.name}: <strong>${w ? esc(w.name) : '?'}</strong> (call #${p.wonAt})</div>`;
-    }).join('');
-    return `
-      <div class="hist-item">
-        <div class="hist-game">Round ${rn.roundNo}</div>
-        ${winners || '<div class="hist-prize">No prizes claimed</div>'}
-      </div>`;
-  }).join('');
-}
-
-// =====================================================
 // TICKET DISPLAY
 // =====================================================
 
@@ -1526,8 +1644,8 @@ function openModal(id) { qs(`#${id}`).classList.remove('hidden'); }
 function closeModal(id) {
   const el = qs(`#${id}`);
   if (el) el.classList.add('hidden');
-  // Dismissing the winner announcement is the signal to resume the draw
-  if (id === 'modal-winner') resumeAfterWinner();
+  // Dismissing a modal that paused the draw is the signal to resume it.
+  if (id === 'modal-winner' || id === 'modal-scoreboard') resumeAfterWinner();
 }
 
 function showWinnerModal(playerName, prizeName, icon, callNo) {
@@ -1568,7 +1686,9 @@ function showRoundOverModal() {
 // =====================================================
 
 function showScoreboard() {
-  stopAuto();
+  // Pause rather than stop: closing the scoreboard resumes the draw if it was
+  // running, instead of silently leaving auto-draw off for the rest of the round.
+  pauseForWinner();
   const r = S.room;
   if (!r) return;
 
@@ -1775,6 +1895,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   qs('#btn-share-game')?.addEventListener('click', openInviteModal);
   qs('#btn-lobby-invite')?.addEventListener('click', openInviteModal);
+  // The room-code badge advertises "click to copy" - wire it up (mouse + keyboard).
+  const codeBadge = qs('#tb-room-code');
+  if (codeBadge) {
+    codeBadge.addEventListener('click', openInviteModal);
+    codeBadge.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openInviteModal(); }
+    });
+  }
   qs('#btn-invite-copy')?.addEventListener('click', () => {
     if (!S.room) return;
     const url = `${location.origin}${location.pathname}#room=${S.room.code}`;
@@ -1796,6 +1924,29 @@ document.addEventListener('DOMContentLoaded', () => {
       qs('#jn-code').value = hash.slice(6).toUpperCase();
     }
     qs('#jn-code').focus();
+  });
+
+  // Rejoin banner on the landing screen.
+  qs('#btn-resume-room')?.addEventListener('click', () => {
+    if (!S.room) { updateLandingResume(); return; }
+
+    // A fresh tab has no identity. Reclaim the room's host identity so the room
+    // never gets stuck with a host that no open tab controls. Anyone who wants
+    // to join as an extra player can still use the Join Room button.
+    if (!S.myPlayerId) {
+      const host = S.players.find(p => p.id === S.room.hostId) || S.players.find(p => p.isHost);
+      if (host) {
+        S.myPlayerId = host.id;
+        S.players.forEach(p => { p.isLocal = p.id === S.myPlayerId; });
+        save();
+      }
+    }
+
+    if (S.myPlayerId) { resumeSavedRoom(); return; }
+    // Room has no players at all (should not happen) - fall back to joining.
+    showScreen('join');
+    qs('#jn-code').value = S.room.code;
+    qs('#jn-name').focus();
   });
 
   // ── Create Room ──
@@ -1839,7 +1990,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── Lobby ──
   qs('#btn-start-game').addEventListener('click', startGame);
-  qs('#btn-lobby-add-player').addEventListener('click', () => openAddPlayerModal());
 
   // ── Game controls ──
   qs('#btn-draw').addEventListener('click', () => drawNumber());
@@ -1933,11 +2083,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const startCall = curRound.drawn.length - curRound.remainingRevealed.length + 1;
     const text = curRound.remainingRevealed.map((num, i) => `#${startCall + i}: ${num}`).join(', ');
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).then(() => toast('Sequence copied to clipboard!'));
-    } else {
-      toast('Copied sequence!');
-    }
+    copyText(text).then(ok => toast(ok ? 'Sequence copied to clipboard!' : 'Could not copy sequence'));
   });
 
   qs('#btn-revealed-next-round')?.addEventListener('click', () => {
@@ -1981,25 +2127,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // ── Auto-fill code from URL hash ──
+  // ── Invite link vs. saved session ──
+  // An invite link must win over session restore, otherwise opening a shared
+  // link while already in a room just dumps you back into your own lobby and the
+  // join form never appears. Exception: the link points at the room this tab is
+  // already in, in which case resuming is the right thing to do.
   const hash = location.hash;
-  if (hash.startsWith('#room=')) {
-    const code = hash.slice(6).toUpperCase();
+  const inviteCode = hash.startsWith('#room=') ? hash.slice(6).toUpperCase() : null;
+  const alreadyInInvitedRoom = !!(inviteCode && S.room && S.room.code === inviteCode && S.myPlayerId);
+
+  if (inviteCode && !alreadyInInvitedRoom) {
     showScreen('join');
-    qs('#jn-code').value = code;
+    qs('#jn-code').value = inviteCode;
+    qs('#jn-name').focus();
+  } else if (S.room && S.myPlayerId) {
+    // ── Resume session if room exists ──
+    resumeSavedRoom();
   }
 
-  // ── Resume session if room exists ──
-  if (S.room && S.myPlayerId) {
-    initChannel();
-    if (S.currentRound > 0 && S.rounds.length) {
-      showScreen('game');
-      S.pool = buildPool(S.room.poolMax, S.drawn);
-      renderAll();
-    } else {
-      showLobby();
-    }
-  }
+  // ── Landing "room in progress" banner ──
+  // With per-tab identity, a fresh tab has no myid even though a room exists in
+  // localStorage. Offer a one-click rejoin instead of a dead-end landing page.
+  updateLandingResume();
 
   // ── Mobile sidebar toggle ──
   qs('.sidebar-right')?.addEventListener('click', function(e) {

@@ -77,7 +77,7 @@
       <button id="btn-share-game" class="btn btn-outline btn-icon" aria-label="Share invite link" title="Copy invite link">🔗</button>
       <button id="btn-scoreboard" class="btn btn-outline btn-icon" aria-label="View scoreboard" title="Scoreboard">🏆</button>
       <button id="btn-new-round" class="btn btn-primary hidden" aria-label="Start next round" title="Start next round">＋ Round</button>
-      <button id="btn-home" class="btn btn-danger btn-sm btn-icon" aria-label="Leave game and go home" title="Leave game & go home">🏠</button>
+      <button id="btn-home" class="btn btn-outline btn-sm btn-icon" aria-label="Leave game and go home" title="Leave game &amp; go home">🏠</button>
       <button id="btn-theme" class="theme-toggle" aria-label="Toggle theme" title="Toggle theme">🌙</button>
       <button id="btn-reset" class="btn btn-danger btn-sm btn-icon" aria-label="Reset round" title="Reset round [R]">↺</button>
     </div>
@@ -108,9 +108,18 @@
         </button>
       </div>
 
+      <div class="landing-resume hidden" id="landing-resume">
+        <div class="landing-resume-icon" aria-hidden="true">🎯</div>
+        <div class="landing-resume-text">
+          <strong>A room is already open on this device</strong>
+          <span>Rejoin <b id="resume-room-code">------</b> to keep playing</span>
+        </div>
+        <button id="btn-resume-room" class="btn btn-outline btn-sm">Rejoin</button>
+      </div>
+
       <div class="landing-footer">
         <button id="btn-theme-landing" class="theme-toggle" aria-label="Toggle theme" title="Toggle theme">🌙</button>
-        <span class="landing-version">v2.2</span>
+        <span class="landing-version" id="landing-version">v2.3</span>
       </div>
     </div>
   </div>

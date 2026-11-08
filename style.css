@@ -177,6 +177,27 @@ body {
 
 .landing-actions { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
 
+.landing-resume {
+  display: flex; align-items: center; gap: 12px;
+  margin: 22px auto 0; max-width: 440px;
+  padding: 12px 14px;
+  text-align: left;
+  background: var(--surf-1);
+  border: 1px solid var(--bdr-hi);
+  border-radius: var(--r-lg);
+  box-shadow: 0 10px 30px rgba(124,58,237,.15);
+  animation: fadeUp .5s var(--ease);
+}
+.landing-resume.hidden { display: none !important; }
+.landing-resume-icon { font-size: 22px; flex-shrink: 0; }
+.landing-resume-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.landing-resume-text strong { font-size: 12px; font-weight: 700; color: var(--t1); }
+.landing-resume-text span { font-size: 11px; color: var(--t2); }
+.landing-resume-text b {
+  font-family: 'Orbitron', monospace; letter-spacing: 1px; color: var(--cyan);
+}
+.landing-resume .btn { flex-shrink: 0; }
+
 .landing-footer { margin-top: 48px; display: flex; align-items: center; justify-content: center; gap: 12px; }
 .landing-version { font-size: 11px; color: var(--t3); }
 
@@ -1187,6 +1208,11 @@ body {
 [data-theme="light"] .prize-check-row:hover { background: rgba(124,58,237,0.08); border-color: rgba(124,58,237,0.4); }
 [data-theme="light"] .prize-check-row:has(input:checked) { background: rgba(225,29,72,0.08); border-color: var(--rose); }
 [data-theme="light"] .announce-card { box-shadow: 0 10px 30px rgba(0,0,0,.08); }
+[data-theme="light"] .prev-strip { background: rgba(124,58,237,.05); border-color: rgba(124,58,237,.18); }
+[data-theme="light"] .prev-badge { background: #ffffff; border-color: rgba(124,58,237,.22); box-shadow: 0 2px 6px rgba(0,0,0,.08); }
+[data-theme="light"] .prev-badge.latest-call { border-color: var(--rose); background: rgba(225,29,72,.08); box-shadow: 0 0 12px rgba(225,29,72,.25); }
+[data-theme="light"] .prev-badge.latest-call .prev-num { color: #dc2626; }
+[data-theme="light"] .landing-resume { box-shadow: 0 10px 30px rgba(124,58,237,.12); background: rgba(255,255,255,.7); }
 
 /* ============================================================
    MOTION & EFFECTS
